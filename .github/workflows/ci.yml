@@ -1,0 +1,335 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .github/workflows/ci.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# CI Pipeline — BioAcoustics Fauna Identification System
+#
+# Stages:
+#   lint     → ruff (linter) + black (format check)
+#   test     → pytest con cobertura (tests unitarios sin GPU)
+#   security → bandit (análisis de seguridad estático)
+#   docker   → build de imagen sin push (verifica que el Dockerfile es válido)
+#   schema   → validación sintáctica de schema.sql con pg_prove (opcional)
+#
+# Triggers:
+#   push/PR a main o develop
+#
+# Secrets requeridos (configurar en GitHub → Settings → Secrets):
+#   (ninguno obligatorio para CI básico)
+#   DOCKER_USERNAME / DOCKER_TOKEN  → si se habilita push al registry
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI — BioAcoustics
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:      # Permite disparar manualmente desde GitHub UI
+
+# Cancelar runs anteriores en la misma rama al hacer push
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.8.2"
+  # PyTorch CPU-only para CI (evita ~2GB de descarga de CUDA)
+  TORCH_INDEX: https://download.pytorch.org/whl/cpu
+
+jobs:
+
+  # ── 1. Lint & Formato ───────────────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: lint-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Instalar herramientas de lint
+        run: pip install ruff black isort
+
+      - name: Ruff — linter
+        run: ruff check src/ tests/ scripts/ --output-format=github
+
+      - name: Black — format check
+        run: black --check --diff src/ tests/ scripts/
+
+      - name: isort — imports order check
+        run: isort --check-only --diff src/ tests/ scripts/
+
+
+  # ── 2. Tests unitarios ─────────────────────────────────────────────────────
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    needs: lint
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: test-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            test-${{ runner.os }}-py${{ matrix.python-version }}-
+
+      - name: Instalar dependencias del sistema (libsndfile)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libsndfile1
+
+      - name: Instalar PyTorch CPU-only
+        run: |
+          pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 \
+            --index-url ${{ env.TORCH_INDEX }}
+
+      - name: Instalar dependencias del proyecto
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-timeout
+
+      - name: Ejecutar tests — preprocessor
+        run: |
+          pytest tests/test_preprocessor.py \
+            -v \
+            --tb=short \
+            --timeout=60 \
+            --cov=src/audio_processing \
+            --cov-report=xml:coverage_preprocessor.xml \
+            --cov-report=term-missing
+
+      - name: Ejecutar tests — modelos
+        run: |
+          pytest tests/test_models.py \
+            -v \
+            --tb=short \
+            --timeout=120 \
+            --cov=src/models \
+            --cov-append \
+            --cov-report=xml:coverage_models.xml \
+            --cov-report=term-missing
+
+      - name: Ejecutar todos los tests (resumen)
+        run: |
+          pytest tests/ \
+            -v \
+            --tb=short \
+            --timeout=120 \
+            --cov=src \
+            --cov-report=xml:coverage_total.xml \
+            --cov-report=term-missing \
+            --junitxml=test_results.xml
+
+      - name: Subir reporte de cobertura
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: |
+            coverage_total.xml
+            test_results.xml
+
+      - name: Comentar cobertura en PR
+        if: github.event_name == 'pull_request'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          COVERAGE_DATA_FILE: coverage_total.xml
+        continue-on-error: true
+
+
+  # ── 3. Análisis de seguridad ───────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    needs: lint
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Instalar bandit y safety
+        run: pip install bandit safety
+
+      - name: Bandit — análisis de código estático
+        run: |
+          bandit -r src/ scripts/ \
+            --severity-level medium \
+            --confidence-level medium \
+            --format json \
+            --output bandit_report.json || true
+          bandit -r src/ scripts/ \
+            --severity-level medium \
+            --confidence-level medium
+
+      - name: Safety — vulnerabilidades en dependencias
+        run: safety check -r requirements.txt --output text || true
+
+      - name: Subir reporte bandit
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit_report.json
+
+
+  # ── 4. Validación del schema SQL ───────────────────────────────────────────
+  schema:
+    name: SQL Schema Validation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    needs: lint
+
+    services:
+      postgres:
+        image: postgis/postgis:15-3.4-alpine
+        env:
+          POSTGRES_DB:       bioacoustics_test
+          POSTGRES_USER:     test_user
+          POSTGRES_PASSWORD: test_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U test_user"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Aplicar schema.sql
+        env:
+          PGPASSWORD: test_pass
+        run: |
+          psql -h localhost -p 5432 -U test_user -d bioacoustics_test \
+            -f database/schema.sql
+
+      - name: Verificar tablas creadas
+        env:
+          PGPASSWORD: test_pass
+        run: |
+          psql -h localhost -p 5432 -U test_user -d bioacoustics_test \
+            -c "\dt" | grep -E "species|recording|detection|taxa_class"
+
+      - name: Aplicar seed.sql
+        env:
+          PGPASSWORD: test_pass
+        run: |
+          psql -h localhost -p 5432 -U test_user -d bioacoustics_test \
+            -f database/seed.sql
+
+      - name: Verificar datos semilla
+        env:
+          PGPASSWORD: test_pass
+        run: |
+          psql -h localhost -p 5432 -U test_user -d bioacoustics_test \
+            -c "SELECT COUNT(*) FROM taxa_class;" | grep -E "[1-9]"
+
+
+  # ── 5. Build Docker ────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    needs: [test, schema]
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Crear database/seed.sql placeholder si no existe
+        run: touch database/seed.sql || true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache capas de Docker
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: docker-${{ runner.os }}-${{ hashFiles('Dockerfile', 'requirements.txt') }}
+          restore-keys: |
+            docker-${{ runner.os }}-
+
+      - name: Build imagen (sin push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: runtime
+          push: false
+          tags: bioacoustics-api:ci-${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to:   type=local,dest=/tmp/.buildx-cache-new,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Rotar cache de Docker
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+
+  # ── 6. Resumen de CI ───────────────────────────────────────────────────────
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-22.04
+    needs: [lint, test, security, schema, docker-build]
+    if: always()
+
+    steps:
+      - name: Verificar estado de jobs
+        run: |
+          echo "lint:         ${{ needs.lint.result }}"
+          echo "test:         ${{ needs.test.result }}"
+          echo "security:     ${{ needs.security.result }}"
+          echo "schema:       ${{ needs.schema.result }}"
+          echo "docker-build: ${{ needs.docker-build.result }}"
+
+          # Fallar si algún job crítico falló
+          if [[ "${{ needs.lint.result }}"   == "failure" || \
+                "${{ needs.test.result }}"   == "failure" || \
+                "${{ needs.schema.result }}" == "failure" ]]; then
+            echo "::error::Uno o más jobs críticos fallaron."
+            exit 1
+          fi
+          echo "✅ CI completado correctamente."

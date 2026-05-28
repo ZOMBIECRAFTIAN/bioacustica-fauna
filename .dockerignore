@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .dockerignore — Excluye archivos del contexto de build de Docker
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Control de versiones
+.git/
+.gitignore
+
+# Entornos virtuales Python
+venv/
+.venv/
+env/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Datos crudos y modelos (se montan como volúmenes)
+data/raw/
+data/processed/
+models/*.pth
+models/*.pt
+models/*.onnx
+
+# Resultados y logs (se montan como volúmenes)
+results/
+logs/
+mlruns/
+
+# Tests (no necesarios en imagen de producción)
+tests/
+pytest_cache/
+.pytest_cache/
+coverage.xml
+.coverage
+htmlcov/
+
+# Notebooks (no necesarios en producción)
+notebooks/
+
+# Documentación
+docs/
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de entorno (NUNCA incluir en imagen)
+.env
+.env.*
+!.env.example
+
+# Docker mismo
+Dockerfile*
+docker-compose*.yml
+docker/
+
+# Archivos temporales
+*.tmp
+*.temp
+*.log
+*.bak
+
+# Node (si se generaron documentos Word localmente)
+node_modules/
+package-lock.json
+package.json

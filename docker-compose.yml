@@ -1,0 +1,239 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — BioAcoustics Fauna Identification System
+# ─────────────────────────────────────────────────────────────────────────────
+# Servicios:
+#   db        — PostgreSQL 15 con schema bioacoustics
+#   api       — FastAPI + PyTorch (CPU-only por defecto)
+#   pgadmin   — pgAdmin 4 para administración visual de BD
+#   mlflow    — MLflow tracking server (opcional, perfil: mlflow)
+#
+# Uso:
+#   Iniciar servicios principales:
+#     docker-compose up -d
+#
+#   Incluir MLflow:
+#     docker-compose --profile mlflow up -d
+#
+#   Ver logs:
+#     docker-compose logs -f api
+#
+#   Detener y eliminar volúmenes:
+#     docker-compose down -v
+#
+#   Reconstruir imagen API tras cambios de código:
+#     docker-compose build api && docker-compose up -d api
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+# ── Redes ─────────────────────────────────────────────────────────────────────
+networks:
+  backend:
+    driver: bridge
+    name: bioacoustics_backend
+
+# ── Volúmenes persistentes ────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    name: bioacoustics_postgres_data
+  pgadmin_data:
+    name: bioacoustics_pgadmin_data
+  mlflow_data:
+    name: bioacoustics_mlflow_data
+  model_weights:
+    name: bioacoustics_model_weights
+  audio_data:
+    name: bioacoustics_audio_data
+  results_data:
+    name: bioacoustics_results_data
+
+# ── Servicios ─────────────────────────────────────────────────────────────────
+services:
+
+  # ── PostgreSQL 15 ───────────────────────────────────────────────────────────
+  db:
+    image: postgis/postgis:15-3.4-alpine
+    container_name: bioacoustics_db
+    restart: unless-stopped
+    networks:
+      - backend
+
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-bioacoustics}
+      POSTGRES_USER:     ${DB_USER:-bioacoustics_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      # Parámetros de rendimiento PostgreSQL
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+
+    ports:
+      - "${DB_EXTERNAL_PORT:-5432}:5432"
+
+    volumes:
+      # Datos persistentes
+      - postgres_data:/var/lib/postgresql/data
+      # Schema inicial: se ejecuta automáticamente en primer arranque
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      # Script de datos semilla (si existe)
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bioacoustics_user} -d ${DB_NAME:-bioacoustics}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # Configuración de rendimiento inyectada como command
+    command: >
+      postgres
+        -c max_connections=100
+        -c shared_buffers=256MB
+        -c work_mem=16MB
+        -c maintenance_work_mem=128MB
+        -c effective_cache_size=1GB
+        -c wal_buffers=8MB
+        -c checkpoint_completion_target=0.9
+        -c log_min_duration_statement=1000
+        -c log_statement=ddl
+        -c timezone=UTC
+
+
+  # ── FastAPI — Bioacoustics API ───────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: bioacoustics-api:latest
+    container_name: bioacoustics_api
+    restart: unless-stopped
+    networks:
+      - backend
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      # Base de datos
+      DB_HOST:     db
+      DB_PORT:     5432
+      DB_NAME:     ${DB_NAME:-bioacoustics}
+      DB_USER:     ${DB_USER:-bioacoustics_user}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+
+      # Aplicación
+      APP_ENV:     ${APP_ENV:-production}
+      APP_HOST:    0.0.0.0
+      APP_PORT:    8000
+      APP_WORKERS: ${APP_WORKERS:-1}
+      LOG_LEVEL:   ${LOG_LEVEL:-INFO}
+
+      # Modelo
+      MODEL_TYPE:             ${MODEL_TYPE:-efficientnet}
+      MODEL_BACKBONE:         ${MODEL_BACKBONE:-efficientnet_b0}
+      MODEL_CHECKPOINT_PATH:  /app/models/checkpoint_best.pth
+      MODEL_DEVICE:           ${MODEL_DEVICE:-cpu}
+      MODEL_TOP_K:            ${MODEL_TOP_K:-5}
+
+      # MLflow (deshabilitado por defecto si no se usa perfil mlflow)
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+
+      # Taxonomía
+      PYTHONPATH: /app
+
+    ports:
+      - "${API_EXTERNAL_PORT:-8000}:8000"
+
+    volumes:
+      # Pesos del modelo (mount externo si ya se entrenó)
+      - model_weights:/app/models
+      # Datos de audio en bruto
+      - audio_data:/app/data
+      # Resultados, logs, visualizaciones
+      - results_data:/app/results
+      # Código fuente en modo desarrollo (comentar en producción)
+      # - ./src:/app/src:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+
+  # ── pgAdmin 4 ────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bioacoustics_pgadmin
+    restart: unless-stopped
+    networks:
+      - backend
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@bioacoustics.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin_changeme}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      # Deshabilitar telemetría
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
+
+    ports:
+      - "${PGADMIN_EXTERNAL_PORT:-5050}:80"
+
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      # Servidor preconfigurado (se crea en docker/pgadmin_servers.json)
+      - ./docker/pgadmin_servers.json:/pgadmin4/servers.json:ro
+
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://localhost:80/misc/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+
+  # ── MLflow Tracking Server (perfil opcional) ──────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.12.1
+    container_name: bioacoustics_mlflow
+    restart: unless-stopped
+    profiles:
+      - mlflow
+    networks:
+      - backend
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      BACKEND_STORE_URI: postgresql://${DB_USER:-bioacoustics_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-bioacoustics}
+      ARTIFACT_ROOT: /mlflow/artifacts
+
+    ports:
+      - "${MLFLOW_EXTERNAL_PORT:-5000}:5000"
+
+    volumes:
+      - mlflow_data:/mlflow/artifacts
+
+    command: >
+      mlflow server
+        --backend-store-uri postgresql://${DB_USER:-bioacoustics_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-bioacoustics}
+        --default-artifact-root /mlflow/artifacts
+        --host 0.0.0.0
+        --port 5000
+        --workers 2
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
