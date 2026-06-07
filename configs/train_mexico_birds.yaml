@@ -1,0 +1,71 @@
+# Configuracion de entrenamiento -- MVP Aves de Mexico
+
+dataset:
+  root_dir:       "data/spectrograms"
+  target_size:    [128, 128]
+  normalize:      true
+  train_split:    0.70
+  val_split:      0.15
+  test_split:     0.15
+  split_strategy: "stratified"
+  min_samples_per_class: 20
+
+model:
+  type:           "efficientnet"
+  backbone:       "efficientnet_b0"
+  in_channels:    1
+  dropout:        0.35
+  pretrained:     true
+
+training:
+  device:         "auto"
+  batch_size:     32
+  num_workers:    4
+  pin_memory:     true
+
+  phase1_epochs:  10
+  phase2_epochs:  15
+  phase3_epochs:  10
+
+  optimizer:      "adamw"
+  lr_phase1:      1.0e-3
+  lr_phase2:      1.0e-4
+  lr_phase3:      5.0e-5
+  weight_decay:   1.0e-4
+
+  label_smoothing: 0.1
+  use_class_weights: true
+
+  use_mixup:       true
+  mixup_alpha:     0.3
+  use_specaugment: true
+  freq_mask:       18
+  time_mask:       28
+
+  patience:        8
+
+audio:
+  sample_rate:     44100
+  segment_s:       3.0
+  hop_s:           1.5
+  n_fft:           2048
+  hop_length:      512
+  n_mels:          128
+  fmin:            200
+  fmax:            12000
+  apply_bandpass:  true
+  apply_nr:        true
+  normalize:       true
+  preset:          "birds"
+
+output:
+  model_dir:       "models/trained/mexico_birds"
+  results_dir:     "results/mexico_birds"
+  experiment_name: "mexico_birds_v1"
+  log_level:       "INFO"
+  save_every_n_epochs: 5
+
+evaluation:
+  metrics:   ["accuracy", "f1_macro", "precision_macro", "recall_macro", "auc_roc"]
+  top_k:     [1, 3, 5]
+  min_prob:  0.05

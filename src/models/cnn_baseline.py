@@ -20,19 +20,19 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. BLOQUES ARQUITECTÓNICOS
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class ConvBNReLU(nn.Module):
     """Bloque básico: Conv2D → BatchNorm → ReLU"""
@@ -67,9 +67,9 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_ch: int, out_ch: int, stride: int = 1):
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, out_ch, 3, stride, 1, bias=False)
-        self.bn1   = nn.BatchNorm2d(out_ch)
+        self.bn1 = nn.BatchNorm2d(out_ch)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, 1, 1, bias=False)
-        self.bn2   = nn.BatchNorm2d(out_ch)
+        self.bn2 = nn.BatchNorm2d(out_ch)
 
         # Projection shortcut si dimensiones cambian
         self.shortcut = nn.Sequential()
@@ -103,13 +103,14 @@ class AttentionPool(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, C, H, W)
         weights = torch.softmax(self.attn(x).flatten(2), dim=-1)  # (B, 1, H*W)
-        feats   = x.flatten(2)                                      # (B, C, H*W)
-        return (feats * weights).sum(dim=-1)                        # (B, C)
+        feats = x.flatten(2)  # (B, C, H*W)
+        return (feats * weights).sum(dim=-1)  # (B, C)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. MODELO CNN BASELINE
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class BioAcousticCNN(nn.Module):
     """
@@ -150,8 +151,8 @@ class BioAcousticCNN(nn.Module):
         )
 
         # ── Bloques residuales ────────────────────────────────────────────────
-        self.layer1 = self._make_layer(64,  64,  n_blocks=2, stride=1)
-        self.layer2 = self._make_layer(64,  128, n_blocks=2, stride=2)
+        self.layer1 = self._make_layer(64, 64, n_blocks=2, stride=1)
+        self.layer2 = self._make_layer(64, 128, n_blocks=2, stride=2)
         self.layer3 = self._make_layer(128, 256, n_blocks=2, stride=2)
         self.layer4 = self._make_layer(256, 512, n_blocks=2, stride=2)
 
@@ -195,13 +196,13 @@ class BioAcousticCNN(nn.Module):
         Returns:
             logits: Tensor shape (B, n_classes) — logits sin softmax.
         """
-        x = self.stem(x)          # (B, 64, H/4, W/4)
-        x = self.layer1(x)        # (B, 64,  H/4,  W/4)
-        x = self.layer2(x)        # (B, 128, H/8,  W/8)
-        x = self.layer3(x)        # (B, 256, H/16, W/16)
-        x = self.layer4(x)        # (B, 512, H/32, W/32)
-        x = self.attn_pool(x)     # (B, 512)
-        return self.classifier(x) # (B, n_classes)
+        x = self.stem(x)  # (B, 64, H/4, W/4)
+        x = self.layer1(x)  # (B, 64,  H/4,  W/4)
+        x = self.layer2(x)  # (B, 128, H/8,  W/8)
+        x = self.layer3(x)  # (B, 256, H/16, W/16)
+        x = self.layer4(x)  # (B, 512, H/32, W/32)
+        x = self.attn_pool(x)  # (B, 512)
+        return self.classifier(x)  # (B, n_classes)
 
     def predict_proba(self, x: torch.Tensor) -> torch.Tensor:
         """Probabilidades softmax sobre las clases."""
@@ -214,6 +215,7 @@ class BioAcousticCNN(nn.Module):
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. DATASET PARA ESPECTROGRAMAS
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class SpectrogramDataset(Dataset):
     """
@@ -238,22 +240,20 @@ class SpectrogramDataset(Dataset):
         self,
         root_dir: str | Path,
         transform=None,
-        target_size: Tuple[int, int] = (128, 128),
+        target_size: tuple[int, int] = (128, 128),
         normalize: bool = True,
     ):
-        self.root_dir    = Path(root_dir)
-        self.transform   = transform
+        self.root_dir = Path(root_dir)
+        self.transform = transform
         self.target_size = target_size
-        self.normalize   = normalize
+        self.normalize = normalize
 
         # Construir mapeo class → int
-        self.classes: List[str] = sorted([
-            d.name for d in self.root_dir.iterdir() if d.is_dir()
-        ])
-        self.class_to_idx: Dict[str, int] = {c: i for i, c in enumerate(self.classes)}
+        self.classes: list[str] = sorted([d.name for d in self.root_dir.iterdir() if d.is_dir()])
+        self.class_to_idx: dict[str, int] = {c: i for i, c in enumerate(self.classes)}
 
         # Listar todos los archivos con su etiqueta
-        self.samples: List[Tuple[Path, int]] = []
+        self.samples: list[tuple[Path, int]] = []
         for cls in self.classes:
             cls_dir = self.root_dir / cls
             for fp in cls_dir.glob("*.npy"):
@@ -267,7 +267,7 @@ class SpectrogramDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         fp, label = self.samples[idx]
         spec = np.load(fp).astype(np.float32)  # (n_mels, T) o (C, n_mels, T)
 
@@ -275,7 +275,7 @@ class SpectrogramDataset(Dataset):
         if spec.ndim == 1:
             spec = spec[np.newaxis, :]
         if spec.ndim == 2:
-            spec = spec[np.newaxis, :]         # → (1, n_mels, T)
+            spec = spec[np.newaxis, :]  # → (1, n_mels, T)
 
         # Redimensionar con interpolación bilineal
         spec_t = torch.from_numpy(spec)
@@ -287,7 +287,7 @@ class SpectrogramDataset(Dataset):
         if self.normalize:
             for c in range(spec_t.shape[0]):
                 mean = spec_t[c].mean()
-                std  = spec_t[c].std() + 1e-8
+                std = spec_t[c].std() + 1e-8
                 spec_t[c] = (spec_t[c] - mean) / std
 
         if self.transform:
@@ -307,6 +307,7 @@ class SpectrogramDataset(Dataset):
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. DATA AUGMENTATION BIOACÚSTICO
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class SpecAugment(nn.Module):
     """
@@ -333,30 +334,52 @@ class SpecAugment(nn.Module):
         super().__init__()
         self.freq_mask_param = freq_mask_param
         self.time_mask_param = time_mask_param
-        self.n_freq_masks    = n_freq_masks
-        self.n_time_masks    = n_time_masks
+        self.n_freq_masks = n_freq_masks
+        self.n_time_masks = n_time_masks
 
     def forward(self, spec: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            spec: Tensor (C, n_mels, T)
+            spec: Tensor (C, n_mels, T) o (B, C, n_mels, T)
         Returns:
             spec augmentado in-place
         """
-        _, n_mels, T = spec.shape
+        if spec.dim() == 3:
+            _, n_mels, T = spec.shape
+
+            def freq_slice(f0: int, f: int):
+                return (slice(None), slice(f0, f0 + f), slice(None))
+
+            def time_slice(t0: int, t: int):
+                return (slice(None), slice(None), slice(t0, t0 + t))
+
+        elif spec.dim() == 4:
+            _, _, n_mels, T = spec.shape
+
+            def freq_slice(f0: int, f: int):
+                return (slice(None), slice(None), slice(f0, f0 + f), slice(None))
+
+            def time_slice(t0: int, t: int):
+                return (slice(None), slice(None), slice(None), slice(t0, t0 + t))
+
+        else:
+            raise ValueError(
+                f"SpecAugment espera tensor 3D o 4D, recibido shape={tuple(spec.shape)}"
+            )
+
         spec = spec.clone()
 
         # Frequency masking
         for _ in range(self.n_freq_masks):
             f = torch.randint(0, self.freq_mask_param + 1, (1,)).item()
             f0 = torch.randint(0, max(n_mels - f, 1), (1,)).item()
-            spec[:, f0:f0 + f, :] = 0.0
+            spec[freq_slice(f0, f)] = 0.0
 
         # Time masking
         for _ in range(self.n_time_masks):
             t = torch.randint(0, self.time_mask_param + 1, (1,)).item()
             t0 = torch.randint(0, max(T - t, 1), (1,)).item()
-            spec[:, :, t0:t0 + t] = 0.0
+            spec[time_slice(t0, t)] = 0.0
 
         return spec
 
@@ -374,7 +397,7 @@ class MixUp(nn.Module):
 
     def forward(
         self, x: torch.Tensor, y: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
         """
         Returns:
             (x_mixed, y_a, y_b, lambda)
@@ -388,6 +411,7 @@ class MixUp(nn.Module):
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. ENTRENAMIENTO
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class Trainer:
     """
@@ -411,13 +435,13 @@ class Trainer:
         use_mixup: bool = True,
         use_specaugment: bool = True,
         patience: int = 10,
-        device: Optional[str] = None,
+        device: str | None = None,
     ):
-        self.model        = model
+        self.model = model
         self.train_loader = train_loader
-        self.val_loader   = val_loader
-        self.output_dir   = Path(output_dir)
-        self.patience     = patience
+        self.val_loader = val_loader
+        self.output_dir = Path(output_dir)
+        self.patience = patience
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Dispositivo
@@ -426,13 +450,11 @@ class Trainer:
         logger.info(f"Trainer: device={self.device}, params={model.count_parameters():,}")
 
         # Augmentación
-        self.mixup       = MixUp(alpha=0.4) if use_mixup else None
-        self.specaugment = SpecAugment()    if use_specaugment else None
+        self.mixup = MixUp(alpha=0.4) if use_mixup else None
+        self.specaugment = SpecAugment() if use_specaugment else None
 
         # Optimizador + scheduler
-        self.optimizer = torch.optim.AdamW(
-            model.parameters(), lr=lr, weight_decay=weight_decay
-        )
+        self.optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, T_max=50, eta_min=1e-6
         )
@@ -440,7 +462,7 @@ class Trainer:
 
     # ── Paso de entrenamiento ─────────────────────────────────────────────────
 
-    def _train_epoch(self) -> Tuple[float, float]:
+    def _train_epoch(self) -> tuple[float, float]:
         self.model.train()
         total_loss, correct, total = 0.0, 0, 0
 
@@ -455,11 +477,10 @@ class Trainer:
             if self.mixup and torch.rand(1).item() > 0.5:
                 x, y_a, y_b, lam = self.mixup(x, y)
                 logits = self.model(x)
-                loss   = lam * self.criterion(logits, y_a) + \
-                         (1 - lam) * self.criterion(logits, y_b)
+                loss = lam * self.criterion(logits, y_a) + (1 - lam) * self.criterion(logits, y_b)
             else:
                 logits = self.model(x)
-                loss   = self.criterion(logits, y)
+                loss = self.criterion(logits, y)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -467,26 +488,26 @@ class Trainer:
             self.optimizer.step()
 
             total_loss += loss.item() * x.size(0)
-            correct    += (logits.argmax(1) == y).sum().item()
-            total      += x.size(0)
+            correct += (logits.argmax(1) == y).sum().item()
+            total += x.size(0)
 
         return total_loss / total, correct / total
 
     # ── Paso de validación ────────────────────────────────────────────────────
 
     @torch.no_grad()
-    def _val_epoch(self) -> Tuple[float, float]:
+    def _val_epoch(self) -> tuple[float, float]:
         self.model.eval()
         total_loss, correct, total = 0.0, 0, 0
 
         for x, y in self.val_loader:
-            x, y   = x.to(self.device), y.to(self.device)
+            x, y = x.to(self.device), y.to(self.device)
             logits = self.model(x)
-            loss   = self.criterion(logits, y)
+            loss = self.criterion(logits, y)
 
             total_loss += loss.item() * x.size(0)
-            correct    += (logits.argmax(1) == y).sum().item()
-            total      += x.size(0)
+            correct += (logits.argmax(1) == y).sum().item()
+            total += x.size(0)
 
         return total_loss / total, correct / total
 
@@ -500,12 +521,14 @@ class Trainer:
             history dict con listas de métricas por época.
         """
         history = {
-            "train_loss": [], "train_acc": [],
-            "val_loss":   [], "val_acc":   [],
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
         }
-        best_val_loss   = float("inf")
+        best_val_loss = float("inf")
         patience_counter = 0
-        best_path       = self.output_dir / "best_model.pt"
+        best_path = self.output_dir / "best_model.pt"
 
         for epoch in range(1, epochs + 1):
             tr_loss, tr_acc = self._train_epoch()
@@ -526,17 +549,20 @@ class Trainer:
 
             # Checkpoint del mejor modelo
             if vl_loss < best_val_loss:
-                best_val_loss    = vl_loss
+                best_val_loss = vl_loss
                 patience_counter = 0
-                torch.save({
-                    "epoch":       epoch,
-                    "model_state": self.model.state_dict(),
-                    "optim_state": self.optimizer.state_dict(),
-                    "val_loss":    vl_loss,
-                    "val_acc":     vl_acc,
-                    "n_classes":   self.model.n_classes,
-                    "history":     history,
-                }, best_path)
+                torch.save(
+                    {
+                        "epoch": epoch,
+                        "model_state": self.model.state_dict(),
+                        "optim_state": self.optimizer.state_dict(),
+                        "val_loss": vl_loss,
+                        "val_acc": vl_acc,
+                        "n_classes": self.model.n_classes,
+                        "history": history,
+                    },
+                    best_path,
+                )
                 logger.info(f"  ✓ Checkpoint guardado → {best_path}")
             else:
                 patience_counter += 1
@@ -555,12 +581,13 @@ class Trainer:
 # 6. EVALUACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @torch.no_grad()
 def evaluate(
     model: BioAcousticCNN,
     loader: DataLoader,
     device: str = "cpu",
-    class_names: Optional[List[str]] = None,
+    class_names: list[str] | None = None,
 ) -> dict:
     """
     Evaluación completa sobre un DataLoader.
@@ -570,8 +597,11 @@ def evaluate(
          confusion_matrix, per_class_f1}
     """
     from sklearn.metrics import (
-        accuracy_score, f1_score, precision_score, recall_score,
+        accuracy_score,
         confusion_matrix,
+        f1_score,
+        precision_score,
+        recall_score,
     )
 
     model.eval()
@@ -589,12 +619,12 @@ def evaluate(
 
     per_class_f1 = f1_score(y_true, y_pred, average=None, zero_division=0)
     results = {
-        "accuracy":        float(accuracy_score(y_true, y_pred)),
-        "f1_macro":        float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
+        "accuracy": float(accuracy_score(y_true, y_pred)),
+        "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
         "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
-        "recall_macro":    float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
+        "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
         "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
-        "per_class_f1":    {
+        "per_class_f1": {
             (class_names[i] if class_names else str(i)): float(per_class_f1[i])
             for i in range(len(per_class_f1))
         },
@@ -605,6 +635,7 @@ def evaluate(
 # ─────────────────────────────────────────────────────────────────────────────
 # 7. INFERENCIA INDIVIDUAL
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def load_model(checkpoint_path: str | Path, device: str = "cpu") -> BioAcousticCNN:
     """Carga un modelo desde checkpoint."""
@@ -618,10 +649,10 @@ def load_model(checkpoint_path: str | Path, device: str = "cpu") -> BioAcousticC
 def predict_single(
     model: BioAcousticCNN,
     spectrogram: np.ndarray,
-    class_names: Optional[List[str]] = None,
+    class_names: list[str] | None = None,
     top_k: int = 5,
     device: str = "cpu",
-) -> List[dict]:
+) -> list[dict]:
     """
     Inferencia sobre un único espectrograma.
 
@@ -640,15 +671,16 @@ def predict_single(
 
     x = torch.from_numpy(spectrogram.astype(np.float32)).to(device)
 
+    model.eval()
     with torch.no_grad():
         probs = model.predict_proba(x).squeeze(0).cpu().numpy()
 
     top_idx = np.argsort(probs)[::-1][:top_k]
     return [
         {
-            "class":       class_names[i] if class_names else str(i),
+            "class": class_names[i] if class_names else str(i),
             "probability": float(probs[i]),
-            "rank":        rank + 1,
+            "rank": rank + 1,
         }
         for rank, i in enumerate(top_idx)
     ]
@@ -674,7 +706,7 @@ if __name__ == "__main__":
     dummy_input = torch.randn(4, 1, 128, 128)  # batch=4, 1 canal, 128 Mel, 128 frames
     with torch.no_grad():
         logits = model(dummy_input)
-        probs  = model.predict_proba(dummy_input)
+        probs = model.predict_proba(dummy_input)
 
     print(f"\nInput shape:  {dummy_input.shape}")
     print(f"Logits shape: {logits.shape}")

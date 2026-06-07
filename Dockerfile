@@ -1,15 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Dockerfile — BioAcoustics Fauna Identification API
+# Dockerfile — Bioacustica Fauna API
 # ─────────────────────────────────────────────────────────────────────────────
 # Multi-stage build:
 #   Stage 1 (builder): instala dependencias Python en un venv aislado.
 #   Stage 2 (runtime): imagen slim con solo lo necesario para producción.
 #
 # Build:
-#   docker build -t bioacoustics-api:latest .
+#   docker build -t bioacustica-fauna-api:latest .
 #
 # Run standalone (sin docker-compose):
-#   docker run -p 8000:8000 --env-file .env bioacoustics-api:latest
+#   docker run -p 8000:8000 --env-file .env bioacustica-fauna-api:latest
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 FROM python:3.11-slim AS runtime
 
 LABEL maintainer="Ian <brianferbaez@gmail.com>"
-LABEL description="BioAcoustics Fauna Identification API — FastAPI + PyTorch"
+LABEL description="Bioacustica Fauna API -- FastAPI + PyTorch"
 LABEL version="1.0.0"
 
 # Librerías de sistema runtime (sin dev-headers)
@@ -76,15 +76,15 @@ ENV PYTHONUNBUFFERED=1 \
     # Base de datos
     DB_HOST=db \
     DB_PORT=5432 \
-    DB_NAME=bioacoustics \
-    DB_USER=bioacoustics_user \
+    DB_NAME=bioacustica_fauna \
+    DB_USER=bioacustica_user \
     DB_PASSWORD=changeme \
     # MLflow (opcional)
     MLFLOW_TRACKING_URI=http://mlflow:5000 \
     # Modelo
-    MODEL_CHECKPOINT_PATH=/app/models/checkpoint_best.pth \
-    MODEL_TYPE=efficientnet \
-    MODEL_BACKBONE=efficientnet_b0 \
+    MODEL_CHECKPOINT_PATH=/app/models/trained/mexico_birds/best_model.pt \
+    MODEL_TYPE=cnn_baseline \
+    MODEL_BACKBONE="" \
     MODEL_DEVICE=cpu \
     MODEL_TOP_K=5 \
     # Logging
@@ -96,6 +96,7 @@ WORKDIR /app
 # Crear estructura de directorios que la app espera
 RUN mkdir -p \
     /app/models \
+    /app/models/trained/mexico_birds \
     /app/data/raw \
     /app/data/processed \
     /app/results/logs \

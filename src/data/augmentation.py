@@ -56,17 +56,17 @@ import logging
 import random
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Tuple, Union
+from typing import Union
 
 import numpy as np
 import torch
-import torch.nn as nn
 
 logger = logging.getLogger(__name__)
 
 # Importación opcional de librosa (puede no estar instalado en entornos mínimos)
 try:
     import librosa
+
     _LIBROSA_OK = True
 except ImportError:
     _LIBROSA_OK = False
@@ -74,6 +74,7 @@ except ImportError:
 
 try:
     import soundfile as sf
+
     _SF_OK = True
 except ImportError:
     _SF_OK = False
@@ -82,6 +83,7 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 # INTERFAZ BASE
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class AudioTransform(ABC):
     """
@@ -93,7 +95,8 @@ class AudioTransform(ABC):
     """
 
     def __init__(self, p: float = 0.5):
-        assert 0.0 <= p <= 1.0
+        if not 0.0 <= p <= 1.0:
+            raise ValueError("p must be between 0.0 and 1.0")
         self.p = p
 
     def __call__(self, y: np.ndarray, sr: int) -> np.ndarray:
@@ -113,6 +116,7 @@ class AudioTransform(ABC):
 # TRANSFORMACIONES TEMPORALES (WAVEFORM)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class PitchShift(AudioTransform):
     """
     Desplaza el tono ±n semitonos sin alterar la duración.
@@ -124,7 +128,7 @@ class PitchShift(AudioTransform):
     Murciélagos: ±1-2 kHz en escala absoluta → equivale a pocos semitonos.
     """
 
-    def __init__(self, n_steps_range: Tuple[float, float] = (-2.0, 2.0), p: float = 0.5):
+    def __init__(self, n_steps_range: tuple[float, float] = (-2.0, 2.0), p: float = 0.5):
         super().__init__(p)
         self.lo, self.hi = n_steps_range
 
@@ -152,7 +156,7 @@ class TimeStretch(AudioTransform):
     murciélagos: no recomendado (pulsos de ecolocalización temporalmente críticos)
     """
 
-    def __init__(self, rate_range: Tuple[float, float] = (0.85, 1.15), p: float = 0.5):
+    def __init__(self, rate_range: tuple[float, float] = (0.85, 1.15), p: float = 0.5):
         super().__init__(p)
         self.lo, self.hi = rate_range
 
@@ -183,15 +187,15 @@ class AddGaussianNoise(AudioTransform):
     Rango útil: SNR ∈ [10, 40] dB para especies con vocalización clara.
     """
 
-    def __init__(self, snr_db_range: Tuple[float, float] = (20.0, 40.0), p: float = 0.5):
+    def __init__(self, snr_db_range: tuple[float, float] = (20.0, 40.0), p: float = 0.5):
         super().__init__(p)
         self.lo, self.hi = snr_db_range
 
     def apply(self, y: np.ndarray, sr: int) -> np.ndarray:
-        snr_db  = random.uniform(self.lo, self.hi)
-        p_sig   = np.mean(y ** 2) + 1e-10
+        snr_db = random.uniform(self.lo, self.hi)
+        p_sig = np.mean(y**2) + 1e-10
         p_noise = p_sig / (10 ** (snr_db / 10))
-        noise   = np.random.normal(0, np.sqrt(p_noise), len(y)).astype(y.dtype)
+        noise = np.random.normal(0, np.sqrt(p_noise), len(y)).astype(y.dtype)
         return np.clip(y + noise, -1.0, 1.0)
 
 
@@ -207,21 +211,22 @@ class AddBackgroundNoise(AudioTransform):
 
     def __init__(
         self,
-        noise_dir:       Optional[Union[str, Path]] = None,
-        target_snr_db:   float                      = 15.0,
-        snr_jitter_db:   float                      = 5.0,
-        p:               float                      = 0.5,
+        noise_dir: Union[str, Path] | None = None,
+        target_snr_db: float = 15.0,
+        snr_jitter_db: float = 5.0,
+        p: float = 0.5,
     ):
         super().__init__(p)
         self.target_snr = target_snr_db
         self.snr_jitter = snr_jitter_db
-        self._noise_files: List[Path] = []
+        self._noise_files: list[Path] = []
 
         if noise_dir is not None:
             noise_dir = Path(noise_dir)
             if noise_dir.is_dir():
-                self._noise_files = list(noise_dir.glob("**/*.wav")) + \
-                                    list(noise_dir.glob("**/*.flac"))
+                self._noise_files = list(noise_dir.glob("**/*.wav")) + list(
+                    noise_dir.glob("**/*.flac")
+                )
         if not self._noise_files:
             logger.debug("AddBackgroundNoise: sin archivos de ruido → modo gaussiano.")
 
@@ -242,7 +247,7 @@ class AddBackgroundNoise(AudioTransform):
             # Ajustar longitud
             if len(noise) > target_len:
                 start = random.randint(0, len(noise) - target_len)
-                noise = noise[start: start + target_len]
+                noise = noise[start : start + target_len]
             elif len(noise) < target_len:
                 noise = np.tile(noise, target_len // len(noise) + 1)[:target_len]
             return noise.astype(np.float32)
@@ -256,15 +261,15 @@ class AddBackgroundNoise(AudioTransform):
         if self._noise_files:
             noise = self._load_random_noise(len(y), sr)
         else:
-            p_sig   = np.mean(y ** 2) + 1e-10
+            p_sig = np.mean(y**2) + 1e-10
             p_noise = p_sig / (10 ** (snr_db / 10))
-            noise   = np.random.normal(0, np.sqrt(p_noise), len(y)).astype(y.dtype)
+            noise = np.random.normal(0, np.sqrt(p_noise), len(y)).astype(y.dtype)
             return np.clip(y + noise, -1.0, 1.0)
 
-        p_sig   = np.mean(y ** 2) + 1e-10
-        p_noise = np.mean(noise ** 2) + 1e-10
+        p_sig = np.mean(y**2) + 1e-10
+        p_noise = np.mean(noise**2) + 1e-10
         # Escalar ruido al SNR objetivo
-        scale   = np.sqrt(p_sig / (p_noise * (10 ** (snr_db / 10))))
+        scale = np.sqrt(p_sig / (p_noise * (10 ** (snr_db / 10))))
         return np.clip(y + scale * noise, -1.0, 1.0)
 
 
@@ -283,7 +288,7 @@ class RandomClip(AudioTransform):
         if len(y) <= target:
             return np.pad(y, (0, target - len(y)))
         start = random.randint(0, len(y) - target)
-        return y[start: start + target]
+        return y[start : start + target]
 
 
 class VolumeJitter(AudioTransform):
@@ -293,12 +298,12 @@ class VolumeJitter(AudioTransform):
     y_out   = y * 10^(gain_db / 20)
     """
 
-    def __init__(self, gain_db_range: Tuple[float, float] = (-6.0, 6.0), p: float = 0.5):
+    def __init__(self, gain_db_range: tuple[float, float] = (-6.0, 6.0), p: float = 0.5):
         super().__init__(p)
         self.lo, self.hi = gain_db_range
 
     def apply(self, y: np.ndarray, sr: int) -> np.ndarray:
-        gain_db  = random.uniform(self.lo, self.hi)
+        gain_db = random.uniform(self.lo, self.hi)
         gain_lin = 10 ** (gain_db / 20.0)
         return np.clip(y * gain_lin, -1.0, 1.0)
 
@@ -315,13 +320,14 @@ class TimeShift(AudioTransform):
 
     def apply(self, y: np.ndarray, sr: int) -> np.ndarray:
         max_samples = int(self.shift_max * sr)
-        shift       = random.randint(-max_samples, max_samples)
+        shift = random.randint(-max_samples, max_samples)
         return np.roll(y, shift)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TRANSFORMACIONES ESPECTRALES (SPECTROGRAM 2D)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class SpectrogramTransform(ABC):
     """Interfaz para transformaciones sobre espectrogramas 2D (np.ndarray o Tensor)."""
@@ -358,7 +364,7 @@ class SpecAugmentFreq(SpectrogramTransform):
         for _ in range(self.n_masks):
             f = random.randint(0, max(1, int(self.max_pct * n_mels)))
             f0 = random.randint(0, max(0, n_mels - f))
-            out[..., f0: f0 + f, :] = 0.0
+            out[..., f0 : f0 + f, :] = 0.0
         return out
 
 
@@ -381,7 +387,7 @@ class SpecAugmentTime(SpectrogramTransform):
         for _ in range(self.n_masks):
             t = random.randint(0, max(1, int(self.max_pct * T)))
             t0 = random.randint(0, max(0, T - t))
-            out[..., :, t0: t0 + t] = 0.0
+            out[..., :, t0 : t0 + t] = 0.0
         return out
 
 
@@ -399,12 +405,12 @@ class FrequencyShift(SpectrogramTransform):
         shift = random.randint(-self.max_shift, self.max_shift)
         if shift == 0:
             return spec
-        out   = np.full_like(spec, spec.min())
+        out = np.full_like(spec, spec.min())
         n_mel = spec.shape[-2]
         if shift > 0:
-            out[..., shift:, :] = spec[..., :n_mel - shift, :]
+            out[..., shift:, :] = spec[..., : n_mel - shift, :]
         else:
-            out[..., :n_mel + shift, :] = spec[..., -shift:, :]
+            out[..., : n_mel + shift, :] = spec[..., -shift:, :]
         return out
 
 
@@ -418,24 +424,24 @@ class RandomErasing(SpectrogramTransform):
 
     def __init__(
         self,
-        n_patches:    int   = 1,
-        area_pct:     float = 0.05,
-        aspect_ratio: Tuple[float, float] = (0.3, 3.3),
-        fill_value:   Optional[float] = None,   # None → usa mínimo del spec
-        p:            float = 0.5,
+        n_patches: int = 1,
+        area_pct: float = 0.05,
+        aspect_ratio: tuple[float, float] = (0.3, 3.3),
+        fill_value: float | None = None,  # None → usa mínimo del spec
+        p: float = 0.5,
     ):
         super().__init__(p)
-        self.n_patches  = n_patches
-        self.area_pct   = area_pct
+        self.n_patches = n_patches
+        self.area_pct = area_pct
         self.ar_lo, self.ar_hi = aspect_ratio
         self.fill = fill_value
 
     def apply(self, spec: np.ndarray) -> np.ndarray:
-        out   = spec.copy()
-        h     = spec.shape[-2]
-        w     = spec.shape[-1]
-        fill  = self.fill if self.fill is not None else spec.min()
-        area  = h * w * self.area_pct
+        out = spec.copy()
+        h = spec.shape[-2]
+        w = spec.shape[-1]
+        fill = self.fill if self.fill is not None else spec.min()
+        area = h * w * self.area_pct
 
         for _ in range(self.n_patches):
             ar = random.uniform(self.ar_lo, self.ar_hi)
@@ -445,7 +451,7 @@ class RandomErasing(SpectrogramTransform):
             pw = min(pw, w)
             y0 = random.randint(0, h - ph) if h > ph else 0
             x0 = random.randint(0, w - pw) if w > pw else 0
-            out[..., y0: y0 + ph, x0: x0 + pw] = fill
+            out[..., y0 : y0 + ph, x0 : x0 + pw] = fill
 
         return out
 
@@ -456,12 +462,13 @@ class GaussianBlur(SpectrogramTransform):
     Simula degradación del sensor o condiciones de baja SNR.
     """
 
-    def __init__(self, sigma_range: Tuple[float, float] = (0.5, 1.5), p: float = 0.3):
+    def __init__(self, sigma_range: tuple[float, float] = (0.5, 1.5), p: float = 0.3):
         super().__init__(p)
         self.lo, self.hi = sigma_range
 
     def apply(self, spec: np.ndarray) -> np.ndarray:
         from scipy.ndimage import gaussian_filter
+
         sigma = random.uniform(self.lo, self.hi)
         return gaussian_filter(spec, sigma=sigma).astype(spec.dtype)
 
@@ -469,6 +476,7 @@ class GaussianBlur(SpectrogramTransform):
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPELINE COMPUESTO
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class AugmentationPipeline:
     """
@@ -485,11 +493,11 @@ class AugmentationPipeline:
 
     def __init__(
         self,
-        transforms: List[AudioTransform],
-        p_apply:    float = 1.0,
+        transforms: list[AudioTransform],
+        p_apply: float = 1.0,
     ):
         self.transforms = transforms
-        self.p_apply    = p_apply
+        self.p_apply = p_apply
 
     def __call__(self, y: np.ndarray, sr: int) -> np.ndarray:
         if random.random() > self.p_apply:
@@ -508,9 +516,9 @@ class AugmentationPipeline:
 class SpectrogramAugmentationPipeline:
     """Encadena múltiples SpectrogramTransform."""
 
-    def __init__(self, transforms: List[SpectrogramTransform], p_apply: float = 1.0):
+    def __init__(self, transforms: list[SpectrogramTransform], p_apply: float = 1.0):
         self.transforms = transforms
-        self.p_apply    = p_apply
+        self.p_apply = p_apply
 
     def __call__(self, spec: np.ndarray) -> np.ndarray:
         if random.random() > self.p_apply:
@@ -524,50 +532,58 @@ class SpectrogramAugmentationPipeline:
 # PIPELINES PREDEFINIDOS
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def light_augment(sr: int = 22_050) -> AugmentationPipeline:
     """Augmentación ligera: solo pitch y volumen. Bajo costo computacional."""
-    return AugmentationPipeline([
-        VolumeJitter(gain_db_range=(-4.0, 4.0), p=0.7),
-        PitchShift(n_steps_range=(-1.0, 1.0),  p=0.5),
-        TimeShift(shift_max_s=0.3,              p=0.4),
-    ], p_apply=0.9)
+    return AugmentationPipeline(
+        [
+            VolumeJitter(gain_db_range=(-4.0, 4.0), p=0.7),
+            PitchShift(n_steps_range=(-1.0, 1.0), p=0.5),
+            TimeShift(shift_max_s=0.3, p=0.4),
+        ],
+        p_apply=0.9,
+    )
 
 
 def standard_augment(
-    noise_dir: Optional[Union[str, Path]] = None,
+    noise_dir: Union[str, Path] | None = None,
 ) -> AugmentationPipeline:
     """
     Augmentación estándar recomendada para entrenamiento.
     Incluye ruido de fondo, stretch y SpecAugment.
     """
-    return AugmentationPipeline([
-        VolumeJitter(gain_db_range=(-6.0, 6.0),       p=0.6),
-        AddBackgroundNoise(noise_dir=noise_dir,
-                           target_snr_db=18, snr_jitter_db=6, p=0.5),
-        AddGaussianNoise(snr_db_range=(25.0, 45.0),    p=0.3),
-        TimeStretch(rate_range=(0.9, 1.1),              p=0.4),
-        PitchShift(n_steps_range=(-2.0, 2.0),          p=0.4),
-        TimeShift(shift_max_s=0.4,                     p=0.3),
-    ], p_apply=0.95)
+    return AugmentationPipeline(
+        [
+            VolumeJitter(gain_db_range=(-6.0, 6.0), p=0.6),
+            AddBackgroundNoise(noise_dir=noise_dir, target_snr_db=18, snr_jitter_db=6, p=0.5),
+            AddGaussianNoise(snr_db_range=(25.0, 45.0), p=0.3),
+            TimeStretch(rate_range=(0.9, 1.1), p=0.4),
+            PitchShift(n_steps_range=(-2.0, 2.0), p=0.4),
+            TimeShift(shift_max_s=0.4, p=0.3),
+        ],
+        p_apply=0.95,
+    )
 
 
 def heavy_augment(
-    noise_dir: Optional[Union[str, Path]] = None,
+    noise_dir: Union[str, Path] | None = None,
 ) -> AugmentationPipeline:
     """
     Augmentación agresiva. Útil con datasets pequeños.
     Puede reducir accuracy si se aplica sin moderación.
     """
-    return AugmentationPipeline([
-        VolumeJitter(gain_db_range=(-8.0, 8.0),        p=0.8),
-        AddBackgroundNoise(noise_dir=noise_dir,
-                           target_snr_db=12, snr_jitter_db=8, p=0.7),
-        AddGaussianNoise(snr_db_range=(15.0, 30.0),    p=0.5),
-        TimeStretch(rate_range=(0.8, 1.2),              p=0.5),
-        PitchShift(n_steps_range=(-3.0, 3.0),          p=0.5),
-        RandomClip(clip_duration_s=3.0,                p=0.3),
-        TimeShift(shift_max_s=0.5,                     p=0.4),
-    ], p_apply=1.0)
+    return AugmentationPipeline(
+        [
+            VolumeJitter(gain_db_range=(-8.0, 8.0), p=0.8),
+            AddBackgroundNoise(noise_dir=noise_dir, target_snr_db=12, snr_jitter_db=8, p=0.7),
+            AddGaussianNoise(snr_db_range=(15.0, 30.0), p=0.5),
+            TimeStretch(rate_range=(0.8, 1.2), p=0.5),
+            PitchShift(n_steps_range=(-3.0, 3.0), p=0.5),
+            RandomClip(clip_duration_s=3.0, p=0.3),
+            TimeShift(shift_max_s=0.5, p=0.4),
+        ],
+        p_apply=1.0,
+    )
 
 
 def get_spectrogram_augment(intensity: str = "standard") -> SpectrogramAugmentationPipeline:
@@ -577,25 +593,31 @@ def get_spectrogram_augment(intensity: str = "standard") -> SpectrogramAugmentat
     intensity : "light" | "standard" | "heavy"
     """
     if intensity == "light":
-        return SpectrogramAugmentationPipeline([
-            SpecAugmentFreq(max_mask_pct=0.08, n_masks=1, p=0.5),
-            SpecAugmentTime(max_mask_pct=0.08, n_masks=1, p=0.5),
-        ])
+        return SpectrogramAugmentationPipeline(
+            [
+                SpecAugmentFreq(max_mask_pct=0.08, n_masks=1, p=0.5),
+                SpecAugmentTime(max_mask_pct=0.08, n_masks=1, p=0.5),
+            ]
+        )
     elif intensity == "heavy":
-        return SpectrogramAugmentationPipeline([
-            SpecAugmentFreq(max_mask_pct=0.20, n_masks=3, p=0.7),
-            SpecAugmentTime(max_mask_pct=0.20, n_masks=3, p=0.7),
-            FrequencyShift(max_shift_bins=6,              p=0.5),
-            RandomErasing(n_patches=2, area_pct=0.06,    p=0.4),
-            GaussianBlur(sigma_range=(0.5, 1.5),          p=0.3),
-        ])
+        return SpectrogramAugmentationPipeline(
+            [
+                SpecAugmentFreq(max_mask_pct=0.20, n_masks=3, p=0.7),
+                SpecAugmentTime(max_mask_pct=0.20, n_masks=3, p=0.7),
+                FrequencyShift(max_shift_bins=6, p=0.5),
+                RandomErasing(n_patches=2, area_pct=0.06, p=0.4),
+                GaussianBlur(sigma_range=(0.5, 1.5), p=0.3),
+            ]
+        )
     else:  # standard
-        return SpectrogramAugmentationPipeline([
-            SpecAugmentFreq(max_mask_pct=0.15, n_masks=2, p=0.6),
-            SpecAugmentTime(max_mask_pct=0.15, n_masks=2, p=0.6),
-            FrequencyShift(max_shift_bins=4,              p=0.4),
-            RandomErasing(n_patches=1, area_pct=0.04,    p=0.3),
-        ])
+        return SpectrogramAugmentationPipeline(
+            [
+                SpecAugmentFreq(max_mask_pct=0.15, n_masks=2, p=0.6),
+                SpecAugmentTime(max_mask_pct=0.15, n_masks=2, p=0.6),
+                FrequencyShift(max_shift_bins=4, p=0.4),
+                RandomErasing(n_patches=1, area_pct=0.04, p=0.3),
+            ]
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -607,13 +629,15 @@ _TAXON_PRESETS: dict = {
         # Murciélagos: ultrasónico 20-200 kHz
         # TimeStretch no recomendado (pulsos de ecolocalización temporalmente críticos)
         # Pitch shift mínimo
-        "waveform": lambda noise_dir=None: AugmentationPipeline([
-            VolumeJitter(gain_db_range=(-4.0, 4.0),       p=0.7),
-            AddBackgroundNoise(noise_dir=noise_dir,
-                               target_snr_db=20, snr_jitter_db=5, p=0.5),
-            AddGaussianNoise(snr_db_range=(30.0, 50.0),   p=0.4),
-            PitchShift(n_steps_range=(-1.0, 1.0),         p=0.3),
-        ], p_apply=0.9),
+        "waveform": lambda noise_dir=None: AugmentationPipeline(
+            [
+                VolumeJitter(gain_db_range=(-4.0, 4.0), p=0.7),
+                AddBackgroundNoise(noise_dir=noise_dir, target_snr_db=20, snr_jitter_db=5, p=0.5),
+                AddGaussianNoise(snr_db_range=(30.0, 50.0), p=0.4),
+                PitchShift(n_steps_range=(-1.0, 1.0), p=0.3),
+            ],
+            p_apply=0.9,
+        ),
         "spectrogram": lambda: get_spectrogram_augment("light"),
     },
     "frogs": {
@@ -624,19 +648,36 @@ _TAXON_PRESETS: dict = {
     },
     "insects": {
         # Ortópteros / cicadas: 200-100000 Hz, cantos estridentes periódicos
-        "waveform": lambda noise_dir=None: AugmentationPipeline([
-            VolumeJitter(gain_db_range=(-5.0, 5.0),       p=0.7),
-            AddBackgroundNoise(noise_dir=noise_dir,
-                               target_snr_db=15, snr_jitter_db=5, p=0.6),
-            AddGaussianNoise(snr_db_range=(20.0, 35.0),   p=0.4),
-            TimeStretch(rate_range=(0.9, 1.1),             p=0.3),
-            PitchShift(n_steps_range=(-1.5, 1.5),         p=0.4),
-        ], p_apply=0.9),
+        "waveform": lambda noise_dir=None: AugmentationPipeline(
+            [
+                VolumeJitter(gain_db_range=(-5.0, 5.0), p=0.7),
+                AddBackgroundNoise(noise_dir=noise_dir, target_snr_db=15, snr_jitter_db=5, p=0.6),
+                AddGaussianNoise(snr_db_range=(20.0, 35.0), p=0.4),
+                TimeStretch(rate_range=(0.9, 1.1), p=0.3),
+                PitchShift(n_steps_range=(-1.5, 1.5), p=0.4),
+            ],
+            p_apply=0.9,
+        ),
         "spectrogram": lambda: get_spectrogram_augment("standard"),
     },
     "mammals": {
         # Mamíferos audibles (no murciélagos): 20-20000 Hz
         "waveform": lambda noise_dir=None: heavy_augment(noise_dir),
+        "spectrogram": lambda: get_spectrogram_augment("standard"),
+    },
+    "birds": {
+        # Aves audibles: cantos/llamadas con variación individual y ambiental moderada
+        "waveform": lambda noise_dir=None: AugmentationPipeline(
+            [
+                VolumeJitter(gain_db_range=(-5.0, 5.0), p=0.7),
+                AddBackgroundNoise(noise_dir=noise_dir, target_snr_db=18, snr_jitter_db=6, p=0.5),
+                AddGaussianNoise(snr_db_range=(25.0, 45.0), p=0.3),
+                TimeStretch(rate_range=(0.88, 1.12), p=0.4),
+                PitchShift(n_steps_range=(-2.0, 2.0), p=0.5),
+                TimeShift(shift_max_s=0.35, p=0.3),
+            ],
+            p_apply=0.95,
+        ),
         "spectrogram": lambda: get_spectrogram_augment("standard"),
     },
     "reptiles": {
@@ -651,14 +692,14 @@ _TAXON_PRESETS: dict = {
 def get_preset(
     taxon: str,
     component: str = "waveform",
-    noise_dir: Optional[Union[str, Path]] = None,
+    noise_dir: Union[str, Path] | None = None,
 ) -> Union[AugmentationPipeline, SpectrogramAugmentationPipeline]:
     """
     Devuelve el pipeline de augmentación recomendado para un grupo taxonómico.
 
     Parameters
     ----------
-    taxon     : "bats" | "frogs" | "insects" | "mammals" | "reptiles"
+    taxon     : "bats" | "birds" | "frogs" | "insects" | "mammals" | "reptiles"
     component : "waveform" | "spectrogram"
     noise_dir : directorio con archivos de ruido de fondo
 
@@ -678,6 +719,7 @@ def get_preset(
 # INTEGRACIÓN CON PYTORCH DATASET
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class AugmentedSpectrogramDataset(torch.utils.data.Dataset):
     """
     Wrapper que aplica augmentación on-the-fly sobre un SpectrogramDataset.
@@ -695,16 +737,16 @@ class AugmentedSpectrogramDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         base_dataset,
-        waveform_aug:    Optional[AugmentationPipeline]           = None,
-        spectrogram_aug: Optional[SpectrogramAugmentationPipeline] = None,
-        sr:              int  = 22_050,
-        training:        bool = True,
+        waveform_aug: AugmentationPipeline | None = None,
+        spectrogram_aug: SpectrogramAugmentationPipeline | None = None,
+        sr: int = 22_050,
+        training: bool = True,
     ):
-        self.base        = base_dataset
-        self.wav_aug     = waveform_aug
-        self.spec_aug    = spectrogram_aug
-        self.sr          = sr
-        self.training    = training
+        self.base = base_dataset
+        self.wav_aug = waveform_aug
+        self.spec_aug = spectrogram_aug
+        self.sr = sr
+        self.training = training
 
     def __len__(self) -> int:
         return len(self.base)
@@ -712,14 +754,14 @@ class AugmentedSpectrogramDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx: int):
         item = self.base[idx]
 
-        if isinstance(item, (list, tuple)):
+        if isinstance(item, list | tuple):
             spec, label = item[0], item[1]
         else:
             spec, label = item["spectrogram"], item["label"]
 
         if self.training and self.spec_aug is not None:
-            arr  = spec.numpy() if isinstance(spec, torch.Tensor) else spec
-            arr  = self.spec_aug(arr)
+            arr = spec.numpy() if isinstance(spec, torch.Tensor) else spec
+            arr = self.spec_aug(arr)
             spec = torch.from_numpy(arr)
 
         return spec, label

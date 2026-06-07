@@ -1,12 +1,12 @@
 {
   "Servers": {
     "1": {
-      "Name": "BioAcoustics DB",
+      "Name": "Bioacustica Fauna DB",
       "Group": "Servers",
       "Host": "db",
       "Port": 5432,
-      "MaintenanceDB": "bioacoustics",
-      "Username": "bioacoustics_user",
+      "MaintenanceDB": "bioacustica_fauna",
+      "Username": "bioacustica_user",
       "SSLMode": "prefer",
       "SSLCert": "",
       "SSLKey": "",

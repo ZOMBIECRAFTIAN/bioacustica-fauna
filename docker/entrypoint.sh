@@ -27,8 +27,8 @@ ok()   { echo -e "${GREEN}[OK]${NC} $*"; }
 # ── Variables con defaults ────────────────────────────────────────────────────
 DB_HOST="${DB_HOST:-db}"
 DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_NAME:-bioacoustics}"
-DB_USER="${DB_USER:-bioacoustics_user}"
+DB_NAME="${DB_NAME:-bioacustica_fauna}"
+DB_USER="${DB_USER:-bioacustica_user}"
 DB_PASSWORD="${DB_PASSWORD:-changeme}"
 MAX_RETRIES=30
 RETRY_INTERVAL=2
@@ -101,7 +101,7 @@ else
 fi
 
 # ── 3. Verificar checkpoint del modelo ───────────────────────────────────────
-MODEL_PATH="${MODEL_CHECKPOINT_PATH:-/app/models/checkpoint_best.pth}"
+MODEL_PATH="${MODEL_CHECKPOINT_PATH:-/app/models/trained/mexico_birds/best_efficientnet.pt}"
 if [ -f "$MODEL_PATH" ]; then
     SIZE=$(du -sh "$MODEL_PATH" 2>/dev/null | cut -f1)
     ok "Checkpoint del modelo encontrado: ${MODEL_PATH} (${SIZE})"
@@ -109,7 +109,7 @@ else
     warn "Checkpoint no encontrado: ${MODEL_PATH}"
     warn "La API arrancará en modo 'sin modelo cargado'."
     warn "Para cargar un modelo, monte el volumen model_weights o"
-    warn "copie el archivo a /app/models/checkpoint_best.pth"
+    warn "copie el archivo a /app/models/trained/mexico_birds/best_efficientnet.pt"
 fi
 
 # ── 4. Configuración de entorno ───────────────────────────────────────────────

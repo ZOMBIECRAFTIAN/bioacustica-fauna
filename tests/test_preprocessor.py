@@ -13,27 +13,27 @@ Autor: Ian
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import tempfile
 
 import numpy as np
 import pytest
-import tempfile
 import soundfile as sf
-
 from src.audio_processing.preprocessor import (
+    PRESETS,
     AudioConfig,
     AudioPreprocessor,
-    PRESETS,
     validate_audio_file,
-    batch_validate,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FIXTURES
 # ─────────────────────────────────────────────────────────────────────────────
 
 SR = 22_050
+
 
 @pytest.fixture
 def sine_audio():
@@ -64,19 +64,21 @@ def tmp_wav(sine_audio):
 
 @pytest.fixture
 def default_proc():
-    return AudioPreprocessor(AudioConfig(
-        sample_rate=SR,
-        apply_noise_reduction=False,
-        apply_bandpass=True,
-    ))
+    return AudioPreprocessor(
+        AudioConfig(
+            sample_rate=SR,
+            apply_noise_reduction=False,
+            apply_bandpass=True,
+        )
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. CARGA DE AUDIO
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestAudioLoad:
 
+class TestAudioLoad:
     def test_load_wav(self, default_proc, tmp_wav):
         y, sr = default_proc.load(tmp_wav)
         assert isinstance(y, np.ndarray)
@@ -102,8 +104,8 @@ class TestAudioLoad:
 # 2. FILTRO PASA-BANDA
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestBandpassFilter:
 
+class TestBandpassFilter:
     def test_output_shape_preserved(self, default_proc, sine_audio):
         filtered = default_proc.bandpass_filter(sine_audio)
         assert filtered.shape == sine_audio.shape
@@ -131,8 +133,8 @@ class TestBandpassFilter:
 # 3. NORMALIZACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestNormalization:
 
+class TestNormalization:
     @pytest.mark.parametrize("method", ["peak", "rms", "lufs"])
     def test_range_after_normalization(self, default_proc, sine_audio, method):
         norm = default_proc.normalize(sine_audio, method=method)
@@ -157,8 +159,8 @@ class TestNormalization:
 # 4. DETECCIÓN DE EVENTOS (VAD)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestVAD:
 
+class TestVAD:
     def test_silence_returns_no_events(self, default_proc, silence_audio):
         events = default_proc.detect_events(silence_audio)
         assert len(events) == 0
@@ -186,8 +188,8 @@ class TestVAD:
 # 5. SEGMENTACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestSegmentation:
 
+class TestSegmentation:
     def test_segment_length(self, default_proc, sine_audio):
         segs = default_proc.segment(sine_audio)
         expected_len = int(default_proc.cfg.segment_duration * SR)
@@ -214,29 +216,29 @@ class TestSegmentation:
 # 6. ESPECTROGRAMA MEL
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestMelSpectrogram:
 
+class TestMelSpectrogram:
     def test_output_shape(self, default_proc, sine_audio):
         segs = default_proc.segment(sine_audio)
-        mel  = default_proc.mel_spectrogram(segs[0])
+        mel = default_proc.mel_spectrogram(segs[0])
         assert mel.ndim == 2
         assert mel.shape[0] == default_proc.cfg.n_mels
 
     def test_output_dtype(self, default_proc, sine_audio):
         segs = default_proc.segment(sine_audio)
-        mel  = default_proc.mel_spectrogram(segs[0])
+        mel = default_proc.mel_spectrogram(segs[0])
         assert mel.dtype == np.float32
 
     def test_mel_is_db(self, default_proc, sine_audio):
         """El espectrograma en dB tiene valores negativos y el máximo ≤ 0."""
         segs = default_proc.segment(sine_audio)
-        mel  = default_proc.mel_spectrogram(segs[0])
-        assert mel.max() <= 0.1     # dB: referencia np.max → max ≈ 0
+        mel = default_proc.mel_spectrogram(segs[0])
+        assert mel.max() <= 0.1  # dB: referencia np.max → max ≈ 0
 
     def test_silence_mel_all_very_negative(self, default_proc, silence_audio):
         """Silencio debe producir mel muy negativo."""
         segs = default_proc.segment(silence_audio)
-        mel  = default_proc.mel_spectrogram(segs[0])
+        mel = default_proc.mel_spectrogram(segs[0])
         assert mel.max() < -40
 
 
@@ -244,8 +246,8 @@ class TestMelSpectrogram:
 # 7. MFCC
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestMFCC:
 
+class TestMFCC:
     def test_shape_without_delta(self, default_proc, sine_audio):
         segs = default_proc.segment(sine_audio)
         mfcc = default_proc.mfcc(segs[0], include_delta=False)
@@ -266,36 +268,43 @@ class TestMFCC:
 # 8. FEATURES ESPECTRALES
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestSpectralFeatures:
 
+class TestSpectralFeatures:
     EXPECTED_KEYS = {
-        "zcr_mean", "zcr_std",
-        "spectral_centroid_mean", "spectral_centroid_std",
-        "spectral_bandwidth_mean", "spectral_bandwidth_std",
-        "spectral_rolloff_mean", "spectral_rolloff_std",
-        "spectral_flatness_mean", "spectral_flatness_std",
-        "chroma_mean", "chroma_std",
-        "rms_mean", "rms_std",
+        "zcr_mean",
+        "zcr_std",
+        "spectral_centroid_mean",
+        "spectral_centroid_std",
+        "spectral_bandwidth_mean",
+        "spectral_bandwidth_std",
+        "spectral_rolloff_mean",
+        "spectral_rolloff_std",
+        "spectral_flatness_mean",
+        "spectral_flatness_std",
+        "chroma_mean",
+        "chroma_std",
+        "rms_mean",
+        "rms_std",
     }
 
     def test_keys_present(self, default_proc, sine_audio):
-        segs  = default_proc.segment(sine_audio)
+        segs = default_proc.segment(sine_audio)
         feats = default_proc.spectral_features(segs[0])
         assert self.EXPECTED_KEYS.issubset(set(feats.keys()))
 
     def test_values_are_finite(self, default_proc, sine_audio):
-        segs  = default_proc.segment(sine_audio)
+        segs = default_proc.segment(sine_audio)
         feats = default_proc.spectral_features(segs[0])
         for k, v in feats.items():
             assert np.isfinite(v), f"Feature {k} no es finito: {v}"
 
     def test_spectral_centroid_positive(self, default_proc, sine_audio):
-        segs  = default_proc.segment(sine_audio)
+        segs = default_proc.segment(sine_audio)
         feats = default_proc.spectral_features(segs[0])
         assert feats["spectral_centroid_mean"] > 0
 
     def test_zcr_between_zero_one(self, default_proc, sine_audio):
-        segs  = default_proc.segment(sine_audio)
+        segs = default_proc.segment(sine_audio)
         feats = default_proc.spectral_features(segs[0])
         assert 0 <= feats["zcr_mean"] <= 1
 
@@ -304,9 +313,11 @@ class TestSpectralFeatures:
 # 9. PRESETS
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPresets:
 
-    @pytest.mark.parametrize("preset_name", ["bats", "frogs", "insects", "mammals", "reptiles"])
+class TestPresets:
+    @pytest.mark.parametrize(
+        "preset_name", ["bats", "birds", "frogs", "insects", "mammals", "reptiles"]
+    )
     def test_preset_exists(self, preset_name):
         assert preset_name in PRESETS
 
@@ -318,11 +329,18 @@ class TestPresets:
         cfg = PRESETS["frogs"]
         assert cfg.freq_low < cfg.freq_high
 
-    @pytest.mark.parametrize("preset_name", ["frogs", "insects", "mammals"])
+    def test_birds_preset_audible_range(self):
+        cfg = PRESETS["birds"]
+        assert cfg.sample_rate == 44_100
+        assert cfg.freq_low >= 100
+        assert cfg.freq_high <= 12_000
+
+    @pytest.mark.parametrize("preset_name", ["birds", "frogs", "insects", "mammals"])
     def test_preset_produces_mel(self, preset_name, sine_audio):
-        cfg  = PRESETS[preset_name]
+        cfg = PRESETS[preset_name]
         # Resamplear dummy a la SR del preset
         import librosa
+
         y = librosa.resample(sine_audio, orig_sr=SR, target_sr=cfg.sample_rate)
         proc = AudioPreprocessor(cfg)
         segs = proc.segment(y)
@@ -335,8 +353,8 @@ class TestPresets:
 # 10. PIPELINE COMPLETO
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestPipelineComplete:
 
+class TestPipelineComplete:
     def test_process_returns_expected_keys(self, default_proc, tmp_wav):
         result = default_proc.process(tmp_wav)
         assert "file" in result

@@ -1,0 +1,88 @@
+# =============================================================================
+# .pre-commit-config.yaml -- Bioacustica Fauna
+# Hooks ejecutados automaticamente en cada git commit.
+#
+# Instalacion (una vez):
+#   pip install pre-commit
+#   pre-commit install
+#
+# Ejecutar manualmente en todos los archivos:
+#   pre-commit run --all-files
+#
+# Actualizar versiones de hooks:
+#   pre-commit autoupdate
+# =============================================================================
+
+default_language_version:
+  python: python3.11
+
+repos:
+
+  # ---------------------------------------------------------------------------
+  # Checks generales de archivos
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+        exclude: \.ipynb$
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=5000]          # bloquea archivos > 5 MB
+      - id: check-case-conflict
+      - id: debug-statements           # detecta breakpoint(), pdb.set_trace()
+      - id: detect-private-key         # no commitear claves privadas
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # ---------------------------------------------------------------------------
+  # Ruff -- linter + import ordering (reemplaza flake8 + isort)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+        files: ^(src|tests|scripts)/
+
+  # ---------------------------------------------------------------------------
+  # Black -- formateo de codigo
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3.11
+        files: ^(src|tests|scripts)/
+
+  # ---------------------------------------------------------------------------
+  # Bandit -- analisis de seguridad estatico
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6
+    hooks:
+      - id: bandit
+        entry: python -X utf8 -m bandit
+        args: [-c, pyproject.toml, -r, src/]
+        files: ^src/
+        additional_dependencies: ["bandit[toml]"]
+
+  # ---------------------------------------------------------------------------
+  # Verificar que los tests no esten rotos (rapido, solo sintaxis)
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: pytest-syntax-check
+        name: pytest -- syntax check (no execution)
+        entry: python -m py_compile
+        language: system
+        types: [python]
+        files: ^tests/
+        pass_filenames: true

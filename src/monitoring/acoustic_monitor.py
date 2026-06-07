@@ -60,17 +60,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import queue
 import signal
-import struct
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -83,48 +80,50 @@ logger = logging.getLogger(__name__)
 # CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class MonitorConfig:
     # Hardware / captura
-    device_index:       int   = 0          # índice PyAudio del micrófono
-    sample_rate:        int   = 22_050     # Hz; usar 192000 para murciélagos
-    channels:           int   = 1
-    chunk_samples:      int   = 1024       # frames por callback PyAudio
-    buffer_seconds:     float = 3.0        # duración del bloque de análisis
-    overlap_seconds:    float = 0.5        # solapamiento entre bloques
+    device_index: int = 0  # índice PyAudio del micrófono
+    sample_rate: int = 22_050  # Hz; usar 192000 para murciélagos
+    channels: int = 1
+    chunk_samples: int = 1024  # frames por callback PyAudio
+    buffer_seconds: float = 3.0  # duración del bloque de análisis
+    overlap_seconds: float = 0.5  # solapamiento entre bloques
 
     # VAD (Voice Activity Detection)
-    vad_rms_threshold:  float = 0.005      # señal por debajo → silencio
-    vad_zcr_max:        float = 0.4        # ZCR muy alta → artefacto
-    min_event_duration: float = 0.2        # s mínimos de actividad para procesar
+    vad_rms_threshold: float = 0.005  # señal por debajo → silencio
+    vad_zcr_max: float = 0.4  # ZCR muy alta → artefacto
+    min_event_duration: float = 0.2  # s mínimos de actividad para procesar
 
     # Modelo
-    model_device:       str   = "cpu"
-    top_k:              int   = 3
-    confidence_min:     float = 0.4        # umbral mínimo para registrar detección
+    model_device: str = "cpu"
+    top_k: int = 3
+    confidence_min: float = 0.4  # umbral mínimo para registrar detección
 
     # IDs para BD
-    site_id:            str   = ""
-    model_id:           str   = ""
-    device_record_id:   str   = ""
+    site_id: str = ""
+    model_id: str = ""
+    device_record_id: str = ""
 
     # Persistencia
-    db_dsn:             str   = ""         # vacío → sin BD
-    log_dir:            str   = "results/logs"
-    log_detections:     bool  = True
+    db_dsn: str = ""  # vacío → sin BD
+    log_dir: str = "results/logs"
+    log_detections: bool = True
 
     # Prometheus (opcional)
-    prometheus_port:    int   = 8001
-    enable_prometheus:  bool  = False
+    prometheus_port: int = 8001
+    enable_prometheus: bool = False
 
     # Control
-    max_queue_size:     int   = 50         # descarta bloques si la cola se llena
-    n_worker_threads:   int   = 1
+    max_queue_size: int = 50  # descarta bloques si la cola se llena
+    n_worker_threads: int = 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VAD — DETECTOR DE ACTIVIDAD VOCAL
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class VADFilter:
     """
@@ -135,11 +134,11 @@ class VADFilter:
     """
 
     def __init__(self, cfg: MonitorConfig):
-        self.rms_th  = cfg.vad_rms_threshold
+        self.rms_th = cfg.vad_rms_threshold
         self.zcr_max = cfg.vad_zcr_max
 
-    def is_active(self, y: np.ndarray) -> Tuple[bool, Dict]:
-        rms = float(np.sqrt(np.mean(y ** 2)))
+    def is_active(self, y: np.ndarray) -> tuple[bool, dict]:
+        rms = float(np.sqrt(np.mean(y**2)))
         zcr = float(np.mean(np.abs(np.diff(np.sign(y)))) / 2)
         active = rms > self.rms_th and zcr < self.zcr_max
         return active, {"rms": rms, "zcr": zcr}
@@ -148,6 +147,7 @@ class VADFilter:
 # ─────────────────────────────────────────────────────────────────────────────
 # PROCESADOR DE BLOQUES
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class BlockProcessor:
     """
@@ -158,23 +158,24 @@ class BlockProcessor:
 
     def __init__(
         self,
-        model:       torch.nn.Module,
-        class_names: List[str],
-        cfg:         MonitorConfig,
+        model: torch.nn.Module,
+        class_names: list[str],
+        cfg: MonitorConfig,
     ):
-        self.model       = model.to(cfg.model_device)
+        self.model = model.to(cfg.model_device)
         self.class_names = class_names
-        self.cfg         = cfg
-        self.device      = cfg.model_device
+        self.cfg = cfg
+        self.device = cfg.model_device
         self.model.eval()
 
         # Importar preprocessor
         from src.audio_processing.preprocessor import AudioConfig, AudioPreprocessor
-        audio_cfg   = AudioConfig(sample_rate=cfg.sample_rate, apply_noise_reduction=False)
-        self.proc   = AudioPreprocessor(audio_cfg)
+
+        audio_cfg = AudioConfig(sample_rate=cfg.sample_rate, apply_noise_reduction=False)
+        self.proc = AudioPreprocessor(audio_cfg)
 
     @torch.no_grad()
-    def process(self, y: np.ndarray, sr: int) -> Optional[Dict]:
+    def process(self, y: np.ndarray, sr: int) -> dict | None:
         """
         Returns dict con predicciones o None si el bloque es descartable.
         """
@@ -183,7 +184,7 @@ class BlockProcessor:
         y = self.proc.normalize(y, method="peak")
 
         # 2. Mel spectrogram
-        mel = self.proc.mel_spectrogram(y)     # (n_mels, T)
+        mel = self.proc.mel_spectrogram(y)  # (n_mels, T)
 
         # 3. Tensor → (1, 1, n_mels, T)
         spec = torch.from_numpy(mel).float()
@@ -191,7 +192,7 @@ class BlockProcessor:
 
         # 4. Inferencia
         try:
-            logits = self.model(spec)          # (1, n_classes)
+            logits = self.model(spec)  # (1, n_classes)
         except Exception as exc:
             logger.warning("Inferencia fallida: %s", exc)
             return None
@@ -199,11 +200,11 @@ class BlockProcessor:
         probs = F.softmax(logits, dim=1).squeeze(0).cpu().numpy()
 
         # 5. Top-K
-        top_idx   = np.argsort(probs)[::-1][: self.cfg.top_k]
+        top_idx = np.argsort(probs)[::-1][: self.cfg.top_k]
         top_preds = [
             {
-                "rank":        int(i + 1),
-                "species":     self.class_names[idx] if idx < len(self.class_names) else f"class_{idx}",
+                "rank": int(i + 1),
+                "species": self.class_names[idx] if idx < len(self.class_names) else f"class_{idx}",
                 "probability": float(probs[idx]),
             }
             for i, idx in enumerate(top_idx)
@@ -214,10 +215,10 @@ class BlockProcessor:
             return None
 
         return {
-            "timestamp":  datetime.now(timezone.utc).isoformat(),
-            "top_k":      top_preds,
-            "best":       top_preds[0],
-            "mel_shape":  list(mel.shape),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "top_k": top_preds,
+            "best": top_preds[0],
+            "mel_shape": list(mel.shape),
         }
 
 
@@ -225,11 +226,12 @@ class BlockProcessor:
 # LOGGER JSONL
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class DetectionLogger:
     """Escribe detecciones en formato JSONL rotado diariamente."""
 
     def __init__(self, log_dir: str):
-        self._dir  = Path(log_dir)
+        self._dir = Path(log_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._file = None
         self._date = None
@@ -240,12 +242,12 @@ class DetectionLogger:
         if today != self._date:
             if self._file:
                 self._file.close()
-            path       = self._dir / f"monitor_{today}.jsonl"
+            path = self._dir / f"monitor_{today}.jsonl"
             self._file = open(path, "a", encoding="utf-8", buffering=1)
             self._date = today
             logger.info("Log rotado: %s", path)
 
-    def write(self, record: Dict) -> None:
+    def write(self, record: dict) -> None:
         with self._lock:
             self._rotate()
             self._file.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -259,6 +261,7 @@ class DetectionLogger:
 # WRITER POSTGRESQL
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class PostgresWriter:
     """
     Escribe detecciones en la tabla `detection` de PostgreSQL.
@@ -267,15 +270,16 @@ class PostgresWriter:
     """
 
     def __init__(self, dsn: str, site_id: str, model_id: str):
-        self.dsn      = dsn
-        self.site_id  = site_id
+        self.dsn = dsn
+        self.site_id = site_id
         self.model_id = model_id
-        self._conn    = None
+        self._conn = None
         self._connect()
 
     def _connect(self) -> None:
         try:
             import psycopg2
+
             self._conn = psycopg2.connect(self.dsn)
             self._conn.autocommit = True
             logger.info("PostgreSQL conectado.")
@@ -283,26 +287,29 @@ class PostgresWriter:
             logger.warning("PostgreSQL no disponible: %s — modo solo-log.", exc)
             self._conn = None
 
-    def write(self, pred: Dict, segment_id: Optional[str] = None) -> None:
+    def write(self, pred: dict, segment_id: str | None = None) -> None:
         if self._conn is None:
             return
         try:
-            best    = pred["best"]
+            best = pred["best"]
             with self._conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO detection
                         (id, segment_id, model_id, detected_at,
                          confidence, raw_output)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT DO NOTHING
-                """, (
-                    str(uuid.uuid4()),
-                    segment_id,
-                    self.model_id or None,
-                    pred["timestamp"],
-                    best["probability"],
-                    json.dumps(pred["top_k"]),
-                ))
+                """,
+                    (
+                        str(uuid.uuid4()),
+                        segment_id,
+                        self.model_id or None,
+                        pred["timestamp"],
+                        best["probability"],
+                        json.dumps(pred["top_k"]),
+                    ),
+                )
         except Exception as exc:
             logger.warning("Error escribiendo en PostgreSQL: %s", exc)
             # Intentar reconexión
@@ -323,6 +330,7 @@ class PostgresWriter:
 # MONITOR PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class AcousticMonitor:
     """
     Orquestador principal del sistema PAM.
@@ -336,41 +344,40 @@ class AcousticMonitor:
 
     def __init__(
         self,
-        model:       torch.nn.Module,
-        cfg:         MonitorConfig,
-        class_names: List[str],
+        model: torch.nn.Module,
+        cfg: MonitorConfig,
+        class_names: list[str],
     ):
-        self.cfg         = cfg
+        self.cfg = cfg
         self.class_names = class_names
 
         # Componentes
-        self.vad       = VADFilter(cfg)
+        self.vad = VADFilter(cfg)
         self.processor = BlockProcessor(model, class_names, cfg)
-        self.det_log   = DetectionLogger(cfg.log_dir) if cfg.log_detections else None
+        self.det_log = DetectionLogger(cfg.log_dir) if cfg.log_detections else None
         self.pg_writer = (
-            PostgresWriter(cfg.db_dsn, cfg.site_id, cfg.model_id)
-            if cfg.db_dsn else None
+            PostgresWriter(cfg.db_dsn, cfg.site_id, cfg.model_id) if cfg.db_dsn else None
         )
 
         # Ring buffer y cola de bloques
         self._buf_samples = int(cfg.buffer_seconds * cfg.sample_rate)
         self._hop_samples = int((cfg.buffer_seconds - cfg.overlap_seconds) * cfg.sample_rate)
-        self._ring        = np.zeros(self._buf_samples, dtype=np.float32)
-        self._ring_ptr    = 0
+        self._ring = np.zeros(self._buf_samples, dtype=np.float32)
+        self._ring_ptr = 0
         self._block_queue: queue.Queue = queue.Queue(maxsize=cfg.max_queue_size)
 
         # Control de hilos
-        self._running   = threading.Event()
-        self._workers:  List[threading.Thread] = []
+        self._running = threading.Event()
+        self._workers: list[threading.Thread] = []
 
         # Estadísticas
-        self.stats: Dict = {
-            "blocks_captured":  0,
-            "blocks_silent":    0,
+        self.stats: dict = {
+            "blocks_captured": 0,
+            "blocks_silent": 0,
             "blocks_processed": 0,
-            "detections":       0,
-            "errors":           0,
-            "start_time":       None,
+            "detections": 0,
+            "errors": 0,
+            "start_time": None,
         }
 
         # Prometheus opcional
@@ -379,22 +386,24 @@ class AcousticMonitor:
             self._setup_prometheus()
 
         # Señal SIGINT / SIGTERM para parada graceful
-        signal.signal(signal.SIGINT,  self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
     # ── Prometheus ─────────────────────────────────────────────────────────
 
     def _setup_prometheus(self) -> None:
         try:
-            from prometheus_client import Counter, Gauge, start_http_server
+            from prometheus_client import Counter, start_http_server
+
             start_http_server(self.cfg.prometheus_port)
             self._prom_counters = {
-                "detections": Counter("bioacoustics_detections_total",
-                                      "Total detections", ["species"]),
-                "blocks":     Counter("bioacoustics_blocks_total",
-                                      "Total audio blocks processed"),
-                "silent":     Counter("bioacoustics_silent_blocks_total",
-                                      "Blocks discarded as silent"),
+                "detections": Counter(
+                    "bioacustica_fauna_detections_total", "Total detections", ["species"]
+                ),
+                "blocks": Counter("bioacustica_fauna_blocks_total", "Total audio blocks processed"),
+                "silent": Counter(
+                    "bioacustica_fauna_silent_blocks_total", "Blocks discarded as silent"
+                ),
             }
             logger.info("Prometheus en puerto %d", self.cfg.prometheus_port)
         except ImportError:
@@ -411,6 +420,7 @@ class AcousticMonitor:
     def _audio_callback(self, in_data, frame_count, time_info, status):
         """Callback de PyAudio: convierte PCM a float32 y llena el ring buffer."""
         import pyaudio
+
         try:
             # PCM int16 → float32 [-1, 1]
             samples = np.frombuffer(in_data, dtype=np.int16).astype(np.float32) / 32768.0
@@ -419,12 +429,12 @@ class AcousticMonitor:
             n = len(samples)
             end = self._ring_ptr + n
             if end <= self._buf_samples:
-                self._ring[self._ring_ptr: end] = samples
+                self._ring[self._ring_ptr : end] = samples
             else:
                 # Wrap-around
                 first = self._buf_samples - self._ring_ptr
-                self._ring[self._ring_ptr:] = samples[:first]
-                self._ring[:n - first]       = samples[first:]
+                self._ring[self._ring_ptr :] = samples[:first]
+                self._ring[: n - first] = samples[first:]
 
             self._ring_ptr = (self._ring_ptr + n) % self._buf_samples
             self.stats["blocks_captured"] += 1
@@ -479,11 +489,11 @@ class AcousticMonitor:
 
             # Logging JSONL
             record = {
-                "monitor_ts":   datetime.now(timezone.utc).isoformat(),
-                "site_id":      self.cfg.site_id,
-                "model_id":     self.cfg.model_id,
-                "vad":          vad_info,
-                "prediction":   pred,
+                "monitor_ts": datetime.now(timezone.utc).isoformat(),
+                "site_id": self.cfg.site_id,
+                "model_id": self.cfg.model_id,
+                "vad": vad_info,
+                "prediction": pred,
             }
             if self.det_log:
                 self.det_log.write(record)
@@ -499,10 +509,7 @@ class AcousticMonitor:
                 ts,
                 species,
                 pred["best"]["probability"],
-                " | ".join(
-                    f"{p['species']}:{p['probability']:.2f}"
-                    for p in pred["top_k"]
-                ),
+                " | ".join(f"{p['species']}:{p['probability']:.2f}" for p in pred["top_k"]),
             )
 
     # ── Arranque y parada ──────────────────────────────────────────────────
@@ -512,13 +519,13 @@ class AcousticMonitor:
         try:
             import pyaudio
         except ImportError:
-            raise RuntimeError(
-                "pyaudio no instalado. Instalar con: pip install pyaudio"
-            )
+            raise RuntimeError("pyaudio no instalado. Instalar con: pip install pyaudio")
 
         logger.info(
             "Iniciando AcousticMonitor — SR=%d Hz, buffer=%.1fs, device=%d",
-            self.cfg.sample_rate, self.cfg.buffer_seconds, self.cfg.device_index,
+            self.cfg.sample_rate,
+            self.cfg.buffer_seconds,
+            self.cfg.device_index,
         )
 
         self._running.set()
@@ -531,7 +538,7 @@ class AcousticMonitor:
             self._workers.append(t)
 
         # Stream PyAudio
-        pa  = pyaudio.PyAudio()
+        pa = pyaudio.PyAudio()
         try:
             stream = pa.open(
                 format=pyaudio.paInt16,
@@ -591,7 +598,7 @@ class AcousticMonitor:
 
     # ── Modo archivo (sin micrófono) ───────────────────────────────────────
 
-    def process_file(self, filepath: str) -> List[Dict]:
+    def process_file(self, filepath: str) -> list[dict]:
         """
         Procesa un archivo de audio en modo batch (sin captura en tiempo real).
         Útil para pruebas o procesamiento diferido.
@@ -608,12 +615,12 @@ class AcousticMonitor:
         if y.ndim > 1:
             y = y.mean(axis=1)
 
-        results: List[Dict] = []
-        hop  = self._hop_samples
-        buf  = self._buf_samples
+        results: list[dict] = []
+        hop = self._hop_samples
+        buf = self._buf_samples
 
         for start in range(0, max(1, len(y) - buf), hop):
-            block = y[start: start + buf]
+            block = y[start : start + buf]
             if len(block) < buf:
                 block = np.pad(block, (0, buf - len(block)))
 
@@ -624,8 +631,8 @@ class AcousticMonitor:
             pred = self.processor.process(block, sr)
             if pred:
                 pred["start_s"] = start / sr
-                pred["end_s"]   = (start + buf) / sr
-                pred["vad"]     = vad_info
+                pred["end_s"] = (start + buf) / sr
+                pred["vad"] = vad_info
                 results.append(pred)
 
                 if self.det_log:
@@ -639,10 +646,12 @@ class AcousticMonitor:
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _list_audio_devices() -> None:
     """Lista los dispositivos de audio disponibles en el sistema."""
     try:
         import pyaudio
+
         pa = pyaudio.PyAudio()
         print(f"\nDispositivos de audio disponibles ({pa.get_device_count()}):")
         for i in range(pa.get_device_count()):
@@ -657,6 +666,7 @@ def _list_audio_devices() -> None:
 def main() -> None:
     import argparse
     import sys
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
     parser = argparse.ArgumentParser(description="Monitor acústico pasivo bioacústico")
@@ -664,27 +674,37 @@ def main() -> None:
 
     # Comando: run
     run_p = sub.add_parser("run", help="Iniciar captura en tiempo real")
-    run_p.add_argument("--checkpoint",   required=True)
-    run_p.add_argument("--class-names",  required=True, help="JSON list o archivo .txt")
+    run_p.add_argument("--checkpoint", required=True)
+    run_p.add_argument("--class-names", required=True, help="JSON list o archivo .txt")
     run_p.add_argument("--device-index", type=int, default=0)
-    run_p.add_argument("--sample-rate",  type=int, default=22_050)
-    run_p.add_argument("--buffer",       type=float, default=3.0, dest="buffer_seconds")
-    run_p.add_argument("--overlap",      type=float, default=0.5, dest="overlap_seconds")
-    run_p.add_argument("--site-id",      default="")
-    run_p.add_argument("--model-id",     default="")
-    run_p.add_argument("--db-dsn",       default="")
-    run_p.add_argument("--log-dir",      default="results/logs")
+    run_p.add_argument("--sample-rate", type=int, default=22_050)
+    run_p.add_argument("--buffer", type=float, default=3.0, dest="buffer_seconds")
+    run_p.add_argument("--overlap", type=float, default=0.5, dest="overlap_seconds")
+    run_p.add_argument("--site-id", default="")
+    run_p.add_argument("--model-id", default="")
+    run_p.add_argument("--db-dsn", default="")
+    run_p.add_argument("--log-dir", default="results/logs")
     run_p.add_argument("--model-device", default="cpu")
-    run_p.add_argument("--confidence",   type=float, default=0.4, dest="confidence_min")
-    run_p.add_argument("--top-k",        type=int, default=3)
+    run_p.add_argument(
+        "--model-type",
+        default="cnn_baseline",
+        choices=["cnn_baseline", "efficientnet", "panns"],
+    )
+    run_p.add_argument("--confidence", type=float, default=0.4, dest="confidence_min")
+    run_p.add_argument("--top-k", type=int, default=3)
 
     # Comando: file
     file_p = sub.add_parser("file", help="Procesar archivo de audio")
-    file_p.add_argument("--checkpoint",  required=True)
+    file_p.add_argument("--checkpoint", required=True)
     file_p.add_argument("--class-names", required=True)
-    file_p.add_argument("--input",       required=True)
+    file_p.add_argument(
+        "--model-type",
+        default="cnn_baseline",
+        choices=["cnn_baseline", "efficientnet", "panns"],
+    )
+    file_p.add_argument("--input", required=True)
     file_p.add_argument("--sample-rate", type=int, default=22_050)
-    file_p.add_argument("--output",      default=None, help="Guardar JSON de resultados")
+    file_p.add_argument("--output", default=None, help="Guardar JSON de resultados")
 
     # Comando: devices
     sub.add_parser("devices", help="Listar dispositivos de audio")
@@ -701,51 +721,76 @@ def main() -> None:
         return
 
     # Cargar class_names
-    def load_class_names(raw: str) -> List[str]:
+    def load_class_names(raw: str) -> list[str]:
         try:
-            return json.loads(raw)
+            parsed = json.loads(raw)
         except json.JSONDecodeError:
             p = Path(raw)
             if p.exists():
-                return [line.strip() for line in p.read_text().splitlines() if line.strip()]
-            return raw.split(",")
+                parsed = (
+                    json.loads(p.read_text())
+                    if p.suffix == ".json"
+                    else [line.strip() for line in p.read_text().splitlines() if line.strip()]
+                )
+            else:
+                return raw.split(",")
+        if isinstance(parsed, dict):
+            parsed = parsed.get("classes", parsed.get("class_names", []))
+        if not isinstance(parsed, list):
+            raise ValueError("--class-names debe ser JSON list, JSON con 'classes', archivo o CSV")
+        return [str(x) for x in parsed]
+
+    def load_monitor_model(checkpoint: str, model_type: str, device: str):
+        if model_type == "efficientnet":
+            from src.models.efficientnet_classifier import load_efficientnet
+
+            return load_efficientnet(checkpoint, device)
+        if model_type == "panns":
+            from src.models.panns_classifier import load_panns
+
+            return load_panns(checkpoint, device)
+
+        from src.models.cnn_baseline import load_model
+
+        return load_model(checkpoint, device)
 
     # Cargar modelo
-    from src.models.cnn_baseline import load_model
     device = getattr(args, "model_device", "cpu")
-    model  = load_model(args.checkpoint, device)
+    model = load_monitor_model(args.checkpoint, getattr(args, "model_type", "cnn_baseline"), device)
 
     class_names = load_class_names(args.class_names)
 
     if args.command == "run":
         cfg = MonitorConfig(
-            device_index   = args.device_index,
-            sample_rate    = args.sample_rate,
-            buffer_seconds = args.buffer_seconds,
-            overlap_seconds= args.overlap_seconds,
-            site_id        = args.site_id,
-            model_id       = args.model_id,
-            db_dsn         = args.db_dsn,
-            log_dir        = args.log_dir,
-            model_device   = args.model_device,
-            confidence_min = args.confidence_min,
-            top_k          = args.top_k,
+            device_index=args.device_index,
+            sample_rate=args.sample_rate,
+            buffer_seconds=args.buffer_seconds,
+            overlap_seconds=args.overlap_seconds,
+            site_id=args.site_id,
+            model_id=args.model_id,
+            db_dsn=args.db_dsn,
+            log_dir=args.log_dir,
+            model_device=args.model_device,
+            confidence_min=args.confidence_min,
+            top_k=args.top_k,
         )
         monitor = AcousticMonitor(model, cfg, class_names)
         monitor.run()
 
     elif args.command == "file":
         cfg = MonitorConfig(
-            sample_rate  = args.sample_rate,
-            model_device = getattr(args, "model_device", "cpu"),
+            sample_rate=args.sample_rate,
+            model_device=getattr(args, "model_device", "cpu"),
         )
         monitor = AcousticMonitor(model, cfg, class_names)
         results = monitor.process_file(args.input)
 
         print(f"\nResultados: {len(results)} detecciones")
         for r in results:
-            print(f"  [{r['start_s']:.2f}s → {r['end_s']:.2f}s]  "
-                  f"{r['best']['species']}  (conf={r['best']['probability']:.3f})")
+            print(
+                f"  [{r['start_s']:.2f}s → {r['end_s']:.2f}s]  "
+                f"{r['best']['species']}  (conf={r['best']['probability']:.3f})"
+            )
 
         if args.output:
             Path(args.output).write_text(

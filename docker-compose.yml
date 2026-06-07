@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# docker-compose.yml — BioAcoustics Fauna Identification System
+# docker-compose.yml — Bioacustica Fauna
 # ─────────────────────────────────────────────────────────────────────────────
 # Servicios:
-#   db        — PostgreSQL 15 con schema bioacoustics
+#   db        — PostgreSQL 15 con schema bioacustica_fauna
 #   api       — FastAPI + PyTorch (CPU-only por defecto)
 #   pgadmin   — pgAdmin 4 para administración visual de BD
 #   mlflow    — MLflow tracking server (opcional, perfil: mlflow)
@@ -30,37 +30,37 @@ version: "3.9"
 networks:
   backend:
     driver: bridge
-    name: bioacoustics_backend
+    name: bioacustica_fauna_backend
 
 # ── Volúmenes persistentes ────────────────────────────────────────────────────
 volumes:
   postgres_data:
-    name: bioacoustics_postgres_data
+    name: bioacustica_fauna_postgres_data
   pgadmin_data:
-    name: bioacoustics_pgadmin_data
+    name: bioacustica_fauna_pgadmin_data
   mlflow_data:
-    name: bioacoustics_mlflow_data
+    name: bioacustica_fauna_mlflow_data
   model_weights:
-    name: bioacoustics_model_weights
+    name: bioacustica_fauna_model_weights
   audio_data:
-    name: bioacoustics_audio_data
+    name: bioacustica_fauna_audio_data
   results_data:
-    name: bioacoustics_results_data
+    name: bioacustica_fauna_results_data
 
 # ── Servicios ─────────────────────────────────────────────────────────────────
 services:
 
   # ── PostgreSQL 15 ───────────────────────────────────────────────────────────
   db:
-    image: postgis/postgis:15-3.4-alpine
-    container_name: bioacoustics_db
+    image: postgres:15-alpine
+    container_name: bioacustica_fauna_db
     restart: unless-stopped
     networks:
       - backend
 
     environment:
-      POSTGRES_DB:       ${DB_NAME:-bioacoustics}
-      POSTGRES_USER:     ${DB_USER:-bioacoustics_user}
+      POSTGRES_DB:       ${DB_NAME:-bioacustica_fauna}
+      POSTGRES_USER:     ${DB_USER:-bioacustica_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
       # Parámetros de rendimiento PostgreSQL
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
@@ -77,7 +77,7 @@ services:
       - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bioacoustics_user} -d ${DB_NAME:-bioacoustics}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bioacustica_user} -d ${DB_NAME:-bioacustica_fauna}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -98,14 +98,14 @@ services:
         -c timezone=UTC
 
 
-  # ── FastAPI — Bioacoustics API ───────────────────────────────────────────────
+  # ── FastAPI — Bioacustica Fauna API ─────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: Dockerfile
       target: runtime
-    image: bioacoustics-api:latest
-    container_name: bioacoustics_api
+    image: bioacustica-fauna-api:latest
+    container_name: bioacustica_fauna_api
     restart: unless-stopped
     networks:
       - backend
@@ -118,8 +118,8 @@ services:
       # Base de datos
       DB_HOST:     db
       DB_PORT:     5432
-      DB_NAME:     ${DB_NAME:-bioacoustics}
-      DB_USER:     ${DB_USER:-bioacoustics_user}
+      DB_NAME:     ${DB_NAME:-bioacustica_fauna}
+      DB_USER:     ${DB_USER:-bioacustica_user}
       DB_PASSWORD: ${DB_PASSWORD:-changeme}
 
       # Aplicación
@@ -130,9 +130,9 @@ services:
       LOG_LEVEL:   ${LOG_LEVEL:-INFO}
 
       # Modelo
-      MODEL_TYPE:             ${MODEL_TYPE:-efficientnet}
-      MODEL_BACKBONE:         ${MODEL_BACKBONE:-efficientnet_b0}
-      MODEL_CHECKPOINT_PATH:  /app/models/checkpoint_best.pth
+      MODEL_TYPE:             ${MODEL_TYPE:-cnn_baseline}
+      MODEL_BACKBONE:         ${MODEL_BACKBONE:-}
+      MODEL_CHECKPOINT_PATH:  /app/models/trained/mexico_birds/best_model.pt
       MODEL_DEVICE:           ${MODEL_DEVICE:-cpu}
       MODEL_TOP_K:            ${MODEL_TOP_K:-5}
 
@@ -166,7 +166,7 @@ services:
   # ── pgAdmin 4 ────────────────────────────────────────────────────────────────
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: bioacoustics_pgadmin
+    container_name: bioacustica_fauna_pgadmin
     restart: unless-stopped
     networks:
       - backend
@@ -176,7 +176,7 @@ services:
         condition: service_healthy
 
     environment:
-      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@bioacoustics.local}
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@bioacustica-fauna.local}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin_changeme}
       PGADMIN_CONFIG_SERVER_MODE: "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
@@ -202,7 +202,7 @@ services:
   # ── MLflow Tracking Server (perfil opcional) ──────────────────────────────
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.12.1
-    container_name: bioacoustics_mlflow
+    container_name: bioacustica_fauna_mlflow
     restart: unless-stopped
     profiles:
       - mlflow
@@ -214,7 +214,7 @@ services:
         condition: service_healthy
 
     environment:
-      BACKEND_STORE_URI: postgresql://${DB_USER:-bioacoustics_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-bioacoustics}
+      BACKEND_STORE_URI: postgresql://${DB_USER:-bioacustica_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-bioacustica_fauna}
       ARTIFACT_ROOT: /mlflow/artifacts
 
     ports:
@@ -225,7 +225,7 @@ services:
 
     command: >
       mlflow server
-        --backend-store-uri postgresql://${DB_USER:-bioacoustics_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-bioacoustics}
+        --backend-store-uri postgresql://${DB_USER:-bioacustica_user}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-bioacustica_fauna}
         --default-artifact-root /mlflow/artifacts
         --host 0.0.0.0
         --port 5000

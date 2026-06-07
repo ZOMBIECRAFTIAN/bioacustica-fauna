@@ -73,7 +73,7 @@ audio:
 output:
   model_dir:       "models/trained"
   results_dir:     "results"
-  experiment_name: "bioacoustics_v1"
+  experiment_name: "bioacustica_fauna_v1"
   log_level:       "INFO"
   save_every_n_epochs: 5
 

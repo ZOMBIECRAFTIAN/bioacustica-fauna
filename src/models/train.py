@@ -26,9 +26,12 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-import numpy as np
+# Windows scientific stacks can load two Intel OpenMP runtimes through deps.
+# Set this before importing torch so local training can start.
+if os.name == "nt":
+    os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import torch
 import yaml
 from torch.utils.data import DataLoader, WeightedRandomSampler
@@ -40,9 +43,10 @@ logger = logging.getLogger(__name__)
 # 1. CARGA DE CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def load_config(path: str | Path) -> dict:
     """Carga y valida la configuración YAML."""
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
     # Validaciones mínimas
@@ -74,10 +78,11 @@ def resolve_device(cfg_device: str) -> str:
 # 2. CONSTRUCCIÓN DEL DATASET Y DATALOADERS
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def build_dataloaders(
     cfg: dict,
     device: str,
-) -> Tuple[DataLoader, DataLoader, DataLoader, List[str]]:
+) -> tuple[DataLoader, DataLoader, DataLoader, list[str]]:
     """
     Construye train/val/test DataLoaders desde el directorio de espectrogramas.
 
@@ -89,7 +94,7 @@ def build_dataloaders(
     """
     from src.models.cnn_baseline import SpectrogramDataset
 
-    dcfg     = cfg["dataset"]
+    dcfg = cfg["dataset"]
     root_dir = Path(dcfg["root_dir"])
 
     if not root_dir.exists():
@@ -100,9 +105,9 @@ def build_dataloaders(
 
     # Dataset completo para obtener clases
     full_ds = SpectrogramDataset(
-        root_dir    = root_dir,
-        target_size = tuple(dcfg["target_size"]),
-        normalize   = dcfg["normalize"],
+        root_dir=root_dir,
+        target_size=tuple(dcfg["target_size"]),
+        normalize=dcfg["normalize"],
     )
 
     class_names = full_ds.classes
@@ -112,14 +117,13 @@ def build_dataloaders(
     # Filtrar clases con pocas muestras
     min_samples = dcfg.get("min_samples_per_class", 10)
     from collections import Counter
+
     label_counts = Counter(lbl for _, lbl in full_ds.samples)
-    valid_classes = {cls for cls, c in label_counts.items()
-                     if c >= min_samples}
+    valid_classes = {cls for cls, c in label_counts.items() if c >= min_samples}
     removed = len(class_names) - len(valid_classes)
     if removed > 0:
         logger.warning(f"Eliminadas {removed} clases con < {min_samples} muestras")
-        full_ds.samples = [(fp, lbl) for fp, lbl in full_ds.samples
-                           if lbl in valid_classes]
+        full_ds.samples = [(fp, lbl) for fp, lbl in full_ds.samples if lbl in valid_classes]
         # Re-mapear labels al rango [0, n_valid)
         old_to_new = {old: new for new, old in enumerate(sorted(valid_classes))}
         full_ds.samples = [(fp, old_to_new[lbl]) for fp, lbl in full_ds.samples]
@@ -130,14 +134,15 @@ def build_dataloaders(
     from sklearn.model_selection import train_test_split
 
     indices = list(range(len(full_ds.samples)))
-    labels  = [lbl for _, lbl in full_ds.samples]
+    labels = [lbl for _, lbl in full_ds.samples]
 
     train_pct = dcfg.get("train_split", 0.70)
-    val_pct   = dcfg.get("val_split",   0.15)
+    val_pct = dcfg.get("val_split", 0.15)
 
     # Primer split: train vs rest
     idx_train, idx_rest, lbl_train, lbl_rest = train_test_split(
-        indices, labels,
+        indices,
+        labels,
         test_size=1 - train_pct,
         stratify=labels,
         random_state=42,
@@ -154,13 +159,14 @@ def build_dataloaders(
     def make_subset(ds, indices):
         """Crea un subconjunto del dataset por índices."""
         import copy
+
         sub = copy.copy(ds)
         sub.samples = [ds.samples[i] for i in indices]
         return sub
 
     train_ds = make_subset(full_ds, idx_train)
-    val_ds   = make_subset(full_ds, idx_val)
-    test_ds  = make_subset(full_ds, idx_test)
+    val_ds = make_subset(full_ds, idx_val)
+    test_ds = make_subset(full_ds, idx_test)
 
     logger.info(f"Split — train:{len(train_ds)} val:{len(val_ds)} test:{len(test_ds)}")
 
@@ -183,18 +189,23 @@ def build_dataloaders(
         n_workers = 0
 
     train_loader = DataLoader(
-        train_ds, batch_size=tcfg["batch_size"],
+        train_ds,
+        batch_size=tcfg["batch_size"],
         sampler=sampler,
         num_workers=n_workers,
         pin_memory=(device.startswith("cuda")),
     )
     val_loader = DataLoader(
-        val_ds, batch_size=tcfg["batch_size"],
-        shuffle=False, num_workers=n_workers,
+        val_ds,
+        batch_size=tcfg["batch_size"],
+        shuffle=False,
+        num_workers=n_workers,
     )
     test_loader = DataLoader(
-        test_ds, batch_size=tcfg["batch_size"],
-        shuffle=False, num_workers=n_workers,
+        test_ds,
+        batch_size=tcfg["batch_size"],
+        shuffle=False,
+        num_workers=n_workers,
     )
 
     return train_loader, val_loader, test_loader, class_names
@@ -203,6 +214,7 @@ def build_dataloaders(
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. INSTANCIACIÓN DEL MODELO
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def build_model(
     cfg: dict,
@@ -215,33 +227,36 @@ def build_model(
 
     if model_type == "cnn_baseline":
         from src.models.cnn_baseline import BioAcousticCNN
+
         model = BioAcousticCNN(
-            n_classes    = n_classes,
-            in_channels  = mcfg.get("in_channels", 1),
-            dropout_rate = mcfg.get("dropout", 0.4),
+            n_classes=n_classes,
+            in_channels=mcfg.get("in_channels", 1),
+            dropout_rate=mcfg.get("dropout", 0.4),
         )
         logger.info(f"CNN Baseline — {model.count_parameters():,} params")
         return model, "baseline"
 
     elif model_type == "efficientnet":
         from src.models.efficientnet_classifier import EfficientNetBioAcoustic
+
         model = EfficientNetBioAcoustic(
-            n_classes       = n_classes,
-            backbone        = mcfg.get("backbone", "efficientnet_b0"),
-            in_channels     = mcfg.get("in_channels", 1),
-            dropout_rate    = mcfg.get("dropout", 0.35),
-            pretrained      = mcfg.get("pretrained", True),
-            frozen_backbone = True,
+            n_classes=n_classes,
+            backbone=mcfg.get("backbone", "efficientnet_b0"),
+            in_channels=mcfg.get("in_channels", 1),
+            dropout_rate=mcfg.get("dropout", 0.35),
+            pretrained=mcfg.get("pretrained", True),
+            frozen_backbone=True,
         )
         logger.info(f"EfficientNet — backbone={mcfg['backbone']}")
         return model, "efficientnet"
 
     elif model_type in ("panns", "panns_cnn14"):
         from src.models.panns_classifier import PANNSCNN14BioAcoustic
+
         model = PANNSCNN14BioAcoustic(
-            n_classes       = n_classes,
-            dropout_rate    = mcfg.get("dropout", 0.5),
-            freeze_backbone = True,
+            n_classes=n_classes,
+            dropout_rate=mcfg.get("dropout", 0.5),
+            freeze_backbone=True,
         )
         # Intentar cargar pesos preentrenados
         loaded = model.load_pretrained_panns(download_if_missing=False)
@@ -257,6 +272,7 @@ def build_model(
 # 4. ENTRENAMIENTO
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def run_training(
     cfg: dict,
     model,
@@ -264,7 +280,7 @@ def run_training(
     train_loader: DataLoader,
     val_loader: DataLoader,
     device: str,
-    class_weights: Optional[torch.Tensor] = None,
+    class_weights: torch.Tensor | None = None,
     output_dir: Path = Path("models/trained"),
 ):
     """Selecciona el entrenador correcto y ejecuta el training."""
@@ -272,50 +288,53 @@ def run_training(
 
     if model_type == "baseline":
         from src.models.cnn_baseline import Trainer
+
         trainer = Trainer(
-            model        = model,
-            train_loader = train_loader,
-            val_loader   = val_loader,
-            output_dir   = output_dir,
-            lr           = tcfg["lr_phase1"],
-            weight_decay = tcfg.get("weight_decay", 1e-4),
-            use_mixup    = tcfg.get("use_mixup", True),
-            use_specaugment = tcfg.get("use_specaugment", True),
-            patience     = tcfg.get("patience", 10),
-            device       = device,
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            output_dir=output_dir,
+            lr=tcfg["lr_phase1"],
+            weight_decay=tcfg.get("weight_decay", 1e-4),
+            use_mixup=tcfg.get("use_mixup", True),
+            use_specaugment=tcfg.get("use_specaugment", True),
+            patience=tcfg.get("patience", 10),
+            device=device,
         )
         total_epochs = tcfg["phase1_epochs"] + tcfg["phase2_epochs"] + tcfg["phase3_epochs"]
         history = trainer.fit(epochs=total_epochs)
 
     elif model_type == "efficientnet":
         from src.models.efficientnet_classifier import ProgressiveFinetuner
+
         trainer = ProgressiveFinetuner(
-            model          = model,
-            train_loader   = train_loader,
-            val_loader     = val_loader,
-            output_dir     = output_dir,
-            epochs_phase1  = tcfg["phase1_epochs"],
-            epochs_phase2  = tcfg["phase2_epochs"],
-            epochs_phase3  = tcfg["phase3_epochs"],
-            device         = device,
-            class_weights  = class_weights,
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            output_dir=output_dir,
+            epochs_phase1=tcfg["phase1_epochs"],
+            epochs_phase2=tcfg["phase2_epochs"],
+            epochs_phase3=tcfg["phase3_epochs"],
+            device=device,
+            class_weights=class_weights,
         )
         history = trainer.fit()
 
     elif model_type == "panns":
         from src.models.panns_classifier import PANNsTrainer
+
         trainer = PANNsTrainer(
-            model          = model,
-            train_loader   = train_loader,
-            val_loader     = val_loader,
-            output_dir     = output_dir,
-            epochs_per_phase = (
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            output_dir=output_dir,
+            epochs_per_phase=(
                 tcfg["phase1_epochs"],
                 tcfg["phase2_epochs"],
                 tcfg["phase3_epochs"],
             ),
-            device         = device,
-            class_weights  = class_weights,
+            device=device,
+            class_weights=class_weights,
         )
         history = trainer.fit()
 
@@ -326,10 +345,11 @@ def run_training(
 # 5. EVALUACIÓN FINAL Y REPORTE
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def run_evaluation(
     model,
     test_loader: DataLoader,
-    class_names: List[str],
+    class_names: list[str],
     device: str,
     output_dir: Path,
     experiment_name: str,
@@ -357,14 +377,17 @@ def run_evaluation(
     # Guardar reporte
     report_path = output_dir / f"{experiment_name}_test_results.json"
     with open(report_path, "w") as f:
-        json.dump({
-            "experiment":    experiment_name,
-            "n_classes":     len(class_names),
-            "class_names":   class_names,
-            "metrics":       {k: v for k, v in results.items()
-                              if k != "confusion_matrix"},
-            "confusion_matrix": results["confusion_matrix"],
-        }, f, indent=2)
+        json.dump(
+            {
+                "experiment": experiment_name,
+                "n_classes": len(class_names),
+                "class_names": class_names,
+                "metrics": {k: v for k, v in results.items() if k != "confusion_matrix"},
+                "confusion_matrix": results["confusion_matrix"],
+            },
+            f,
+            indent=2,
+        )
 
     logger.info(f"Reporte guardado: {report_path}")
     return results
@@ -374,13 +397,14 @@ def run_evaluation(
 # 6. INTEGRACIÓN MLFLOW
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def log_to_mlflow(
     cfg: dict,
     history: dict,
     results: dict,
     model,
     model_type: str,
-    class_names: List[str],
+    class_names: list[str],
     duration_s: float,
 ):
     """Registra el experimento en MLflow."""
@@ -394,36 +418,47 @@ def log_to_mlflow(
         with mlflow.start_run(run_name=f"{model_type}_{int(time.time())}"):
             # Parámetros
             flat_cfg = {
-                "model.type":       cfg["model"]["type"],
-                "model.backbone":   cfg["model"].get("backbone", "N/A"),
-                "training.batch":   cfg["training"]["batch_size"],
-                "training.phase1":  cfg["training"]["phase1_epochs"],
-                "training.phase2":  cfg["training"]["phase2_epochs"],
-                "training.phase3":  cfg["training"]["phase3_epochs"],
+                "model.type": cfg["model"]["type"],
+                "model.backbone": cfg["model"].get("backbone", "N/A"),
+                "training.batch": cfg["training"]["batch_size"],
+                "training.phase1": cfg["training"]["phase1_epochs"],
+                "training.phase2": cfg["training"]["phase2_epochs"],
+                "training.phase3": cfg["training"]["phase3_epochs"],
                 "dataset.n_classes": len(class_names),
                 "audio.sample_rate": cfg["audio"]["sample_rate"],
-                "audio.n_mels":      cfg["audio"]["n_mels"],
+                "audio.n_mels": cfg["audio"]["n_mels"],
             }
             mlflow.log_params(flat_cfg)
 
             # Métricas finales
-            mlflow.log_metrics({
-                "test_accuracy":  results["accuracy"],
-                "test_f1_macro":  results["f1_macro"],
-                "test_precision": results["precision_macro"],
-                "test_recall":    results["recall_macro"],
-                "train_duration_s": duration_s,
-            })
+            mlflow.log_metrics(
+                {
+                    "test_accuracy": results["accuracy"],
+                    "test_f1_macro": results["f1_macro"],
+                    "test_precision": results["precision_macro"],
+                    "test_recall": results["recall_macro"],
+                    "train_duration_s": duration_s,
+                }
+            )
 
             # Curvas de entrenamiento epoch por epoch
-            for i, (tl, vl, ta, va) in enumerate(zip(
-                history["train_loss"], history["val_loss"],
-                history["train_acc"],  history["val_acc"],
-            )):
-                mlflow.log_metrics({
-                    "train_loss": tl, "val_loss": vl,
-                    "train_acc":  ta, "val_acc":  va,
-                }, step=i)
+            for i, (tl, vl, ta, va) in enumerate(
+                zip(
+                    history["train_loss"],
+                    history["val_loss"],
+                    history["train_acc"],
+                    history["val_acc"],
+                )
+            ):
+                mlflow.log_metrics(
+                    {
+                        "train_loss": tl,
+                        "val_loss": vl,
+                        "train_acc": ta,
+                        "val_acc": va,
+                    },
+                    step=i,
+                )
 
             # Modelo
             mlflow.pytorch.log_model(model, artifact_path="model")
@@ -440,6 +475,7 @@ def log_to_mlflow(
 # 7. PIPELINE PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def main(config_path: str = "configs/train_config.yaml"):
     """Punto de entrada del pipeline de entrenamiento."""
     t0 = time.time()
@@ -447,6 +483,11 @@ def main(config_path: str = "configs/train_config.yaml"):
     # ── Logging ───────────────────────────────────────────────────────────────
     cfg = load_config(config_path)
     log_level = cfg["output"].get("log_level", "INFO")
+    output_dir = Path(cfg["output"]["model_dir"])
+    results_dir = Path(cfg["output"]["results_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
+
     logging.basicConfig(
         level=getattr(logging, log_level),
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -454,16 +495,13 @@ def main(config_path: str = "configs/train_config.yaml"):
             logging.StreamHandler(),
             logging.FileHandler(
                 Path(cfg["output"]["results_dir"]) / "train.log",
-                mode="a", encoding="utf-8",
+                mode="a",
+                encoding="utf-8",
             ),
         ],
     )
 
-    exp_name   = cfg["output"]["experiment_name"]
-    output_dir = Path(cfg["output"]["model_dir"])
-    results_dir = Path(cfg["output"]["results_dir"])
-    output_dir.mkdir(parents=True, exist_ok=True)
-    results_dir.mkdir(parents=True, exist_ok=True)
+    exp_name = cfg["output"]["experiment_name"]
 
     logger.info(f"{'='*60}")
     logger.info(f"BioAcoustics AI — Entrenamiento: {exp_name}")
@@ -496,16 +534,21 @@ def main(config_path: str = "configs/train_config.yaml"):
     # ── Entrenamiento ─────────────────────────────────────────────────────────
     logger.info(f"Iniciando entrenamiento ({model_type})...")
     history = run_training(
-        cfg, model, model_type,
-        train_loader, val_loader,
-        device, class_weights, output_dir,
+        cfg,
+        model,
+        model_type,
+        train_loader,
+        val_loader,
+        device,
+        class_weights,
+        output_dir,
     )
 
     # ── Cargar mejor checkpoint para evaluación ───────────────────────────────
     best_ckpt_names = {
-        "baseline":   "best_model.pt",
+        "baseline": "best_model.pt",
         "efficientnet": "best_efficientnet.pt",
-        "panns":        "best_panns_cnn14.pt",
+        "panns": "best_panns_cnn14.pt",
     }
     ckpt_path = output_dir / best_ckpt_names[model_type]
     if ckpt_path.exists():
@@ -516,8 +559,12 @@ def main(config_path: str = "configs/train_config.yaml"):
 
     # ── Evaluación final ──────────────────────────────────────────────────────
     results = run_evaluation(
-        model, test_loader, class_names, device,
-        results_dir, exp_name,
+        model,
+        test_loader,
+        class_names,
+        device,
+        results_dir,
+        exp_name,
     )
 
     # ── MLflow ────────────────────────────────────────────────────────────────
@@ -538,7 +585,8 @@ def main(config_path: str = "configs/train_config.yaml"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BioAcoustics AI — Training Pipeline")
     parser.add_argument(
-        "--config", default="configs/train_config.yaml",
+        "--config",
+        default="configs/train_config.yaml",
         help="Ruta al archivo de configuración YAML",
     )
     parser.add_argument(
@@ -552,8 +600,8 @@ if __name__ == "__main__":
         help="Backbone de EfficientNet",
     )
     parser.add_argument("--batch-size", type=int, help="Batch size")
-    parser.add_argument("--epochs",     type=int, help="Épocas totales (distribuidas en 3 fases)")
-    parser.add_argument("--device",     help="Dispositivo: auto, cpu, cuda, cuda:0")
+    parser.add_argument("--epochs", type=int, help="Épocas totales (distribuidas en 3 fases)")
+    parser.add_argument("--device", help="Dispositivo: auto, cpu, cuda, cuda:0")
     args = parser.parse_args()
 
     # Cargar config y aplicar overrides de CLI
@@ -568,15 +616,23 @@ if __name__ == "__main__":
         cfg["training"]["device"] = args.device
     if args.epochs:
         total = args.epochs
-        cfg["training"]["phase1_epochs"] = max(5,  total // 4)
-        cfg["training"]["phase2_epochs"] = max(10, total // 2)
-        cfg["training"]["phase3_epochs"] = max(5,  total // 4)
+        phase1 = 1 if total > 0 else 0
+        phase2 = 0
+        phase3 = 0
+        if total >= 2:
+            phase1 = max(1, total // 4)
+            phase2 = max(1, total // 2)
+            phase3 = max(0, total - phase1 - phase2)
+        cfg["training"]["phase1_epochs"] = phase1
+        cfg["training"]["phase2_epochs"] = phase2
+        cfg["training"]["phase3_epochs"] = phase3
 
     # Guardar config efectiva
-    import tempfile, os
+    import os
+    import tempfile
+
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", dir="configs", delete=False,
-        prefix="effective_", encoding="utf-8"
+        mode="w", suffix=".yaml", dir="configs", delete=False, prefix="effective_", encoding="utf-8"
     ) as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
         effective_cfg_path = f.name

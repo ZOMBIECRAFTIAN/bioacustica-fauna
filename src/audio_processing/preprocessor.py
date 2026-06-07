@@ -15,15 +15,14 @@ Versión: 1.0.0
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple, List
 
-import numpy as np
 import librosa
 import librosa.display
-import soundfile as sf
 import noisereduce as nr
+import numpy as np
+import soundfile as sf
 from scipy.signal import butter, filtfilt
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -33,23 +32,25 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # 1. CONFIGURACIÓN DE PREPROCESAMIENTO
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class AudioConfig:
     """
     Parámetros de configuración para el pipeline de preprocesamiento.
     Ajusta según el grupo taxonómico objetivo.
     """
+
     # ── Tasa de muestreo ─────────────────────────────────────────────────────
-    sample_rate: int = 44_100          # Hz — usar 192_000 para quirópteros
+    sample_rate: int = 44_100  # Hz — usar 192_000 para quirópteros
 
     # ── Segmentación ─────────────────────────────────────────────────────────
-    segment_duration: float = 3.0      # segundos por segmento de análisis
-    hop_duration: float = 1.5          # solapamiento entre segmentos (50% overlap)
+    segment_duration: float = 3.0  # segundos por segmento de análisis
+    hop_duration: float = 1.5  # solapamiento entre segmentos (50% overlap)
 
     # ── Filtrado frecuencial ──────────────────────────────────────────────────
     apply_bandpass: bool = True
-    freq_low: float = 200.0            # Hz — límite inferior del filtro pasa-banda
-    freq_high: float = 20_000.0        # Hz — límite superior (20kHz para audible)
+    freq_low: float = 200.0  # Hz — límite inferior del filtro pasa-banda
+    freq_high: float = 20_000.0  # Hz — límite superior (20kHz para audible)
     # Para quirópteros usar: freq_low=10_000, freq_high=96_000
 
     # ── Reducción de ruido ────────────────────────────────────────────────────
@@ -58,56 +59,85 @@ class AudioConfig:
 
     # ── Normalización ─────────────────────────────────────────────────────────
     normalize: bool = True
-    target_lufs: float = -23.0         # LUFS objetivo (EBU R128 para campo)
+    target_lufs: float = -23.0  # LUFS objetivo (EBU R128 para campo)
 
     # ── Espectrograma Mel ─────────────────────────────────────────────────────
-    n_fft: int = 2048                  # tamaño de la FFT
-    hop_length: int = 512              # salto en muestras entre frames
-    n_mels: int = 128                  # bandas Mel (64 para aves, 128 para multi-grupo)
-    fmin: float = 50.0                 # frecuencia mínima del banco Mel
-    fmax: Optional[float] = None       # None = sr/2 (Nyquist)
-    power: float = 2.0                 # potencia del espectrograma (2=energía, 1=amplitud)
+    n_fft: int = 2048  # tamaño de la FFT
+    hop_length: int = 512  # salto en muestras entre frames
+    n_mels: int = 128  # bandas Mel (64 para aves, 128 para multi-grupo)
+    fmin: float = 50.0  # frecuencia mínima del banco Mel
+    fmax: float | None = None  # None = sr/2 (Nyquist)
+    power: float = 2.0  # potencia del espectrograma (2=energía, 1=amplitud)
 
     # ── MFCC ─────────────────────────────────────────────────────────────────
-    n_mfcc: int = 40                   # número de coeficientes MFCC
+    n_mfcc: int = 40  # número de coeficientes MFCC
 
     # ── Detección de actividad vocal (VAD) ────────────────────────────────────
     vad_energy_threshold: float = 0.02  # umbral de energía RMS relativa
-    vad_min_duration: float = 0.05      # duración mínima de evento (segundos)
+    vad_min_duration: float = 0.05  # duración mínima de evento (segundos)
 
 
 # Presets por grupo taxonómico
 PRESETS: dict[str, AudioConfig] = {
     "bats": AudioConfig(
         sample_rate=192_000,
-        freq_low=10_000, freq_high=96_000,
-        n_mels=64, fmin=10_000, fmax=96_000,
-        segment_duration=0.5, hop_duration=0.25,
-        n_fft=1024, hop_length=128,
+        freq_low=10_000,
+        freq_high=96_000,
+        n_mels=64,
+        fmin=10_000,
+        fmax=96_000,
+        segment_duration=0.5,
+        hop_duration=0.25,
+        n_fft=1024,
+        hop_length=128,
     ),
     "frogs": AudioConfig(
         sample_rate=22_050,
-        freq_low=100, freq_high=10_000,
-        n_mels=128, fmin=100, fmax=10_000,
-        segment_duration=3.0, hop_duration=1.0,
+        freq_low=100,
+        freq_high=10_000,
+        n_mels=128,
+        fmin=100,
+        fmax=10_000,
+        segment_duration=3.0,
+        hop_duration=1.0,
     ),
     "insects": AudioConfig(
         sample_rate=44_100,
-        freq_low=200, freq_high=20_000,
-        n_mels=128, fmin=200,
-        segment_duration=2.0, hop_duration=1.0,
+        freq_low=200,
+        freq_high=20_000,
+        n_mels=128,
+        fmin=200,
+        segment_duration=2.0,
+        hop_duration=1.0,
     ),
     "mammals": AudioConfig(
         sample_rate=44_100,
-        freq_low=50, freq_high=18_000,
-        n_mels=128, fmin=50,
-        segment_duration=3.0, hop_duration=1.5,
+        freq_low=50,
+        freq_high=18_000,
+        n_mels=128,
+        fmin=50,
+        segment_duration=3.0,
+        hop_duration=1.5,
+    ),
+    "birds": AudioConfig(
+        sample_rate=44_100,
+        freq_low=200,
+        freq_high=12_000,
+        n_mels=128,
+        fmin=200,
+        fmax=12_000,
+        segment_duration=3.0,
+        hop_duration=1.5,
     ),
     "reptiles": AudioConfig(
         sample_rate=22_050,
-        freq_low=50, freq_high=8_000,
-        n_mels=64, fmin=50, fmax=8_000,
-        segment_duration=5.0, hop_duration=2.5,
+        freq_low=50,
+        freq_high=8_000,
+        n_mels=64,
+        fmin=50,
+        fmax=8_000,
+        segment_duration=5.0,
+        hop_duration=2.5,
     ),
     "default": AudioConfig(),
 }
@@ -116,6 +146,7 @@ PRESETS: dict[str, AudioConfig] = {
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. CLASE PRINCIPAL DE PREPROCESAMIENTO
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class AudioPreprocessor:
     """
@@ -138,7 +169,7 @@ class AudioPreprocessor:
 
     # ── Carga y remuestreo ────────────────────────────────────────────────────
 
-    def load(self, filepath: str | Path, mono: bool = True) -> Tuple[np.ndarray, int]:
+    def load(self, filepath: str | Path, mono: bool = True) -> tuple[np.ndarray, int]:
         """
         Carga un archivo de audio y lo remuestrea a config.sample_rate.
 
@@ -168,10 +199,10 @@ class AudioPreprocessor:
         Complejidad: O(n) — procesamiento lineal en el tiempo.
         """
         nyq = self.cfg.sample_rate / 2.0
-        low  = self.cfg.freq_low  / nyq
+        low = self.cfg.freq_low / nyq
         high = self.cfg.freq_high / nyq
 
-        low  = np.clip(low,  1e-6, 0.9999)
+        low = np.clip(low, 1e-6, 0.9999)
         high = np.clip(high, low + 1e-6, 0.9999)
 
         b, a = butter(order, [low, high], btype="band")
@@ -211,11 +242,11 @@ class AudioPreprocessor:
             if peak > 1e-8:
                 y = y / peak
         elif method == "rms":
-            rms = np.sqrt(np.mean(y ** 2))
+            rms = np.sqrt(np.mean(y**2))
             if rms > 1e-8:
                 y = y * (0.1 / rms)
         elif method == "lufs":
-            rms = np.sqrt(np.mean(y ** 2))
+            rms = np.sqrt(np.mean(y**2))
             if rms > 1e-8:
                 target_rms = 10 ** (self.cfg.target_lufs / 20.0)
                 y = y * (target_rms / rms)
@@ -223,7 +254,7 @@ class AudioPreprocessor:
 
     # ── Detección de actividad vocal (VAD) ────────────────────────────────────
 
-    def detect_events(self, y: np.ndarray) -> List[Tuple[float, float]]:
+    def detect_events(self, y: np.ndarray) -> list[tuple[float, float]]:
         """
         Detecta eventos de actividad sonora mediante umbral de energía RMS.
 
@@ -231,20 +262,18 @@ class AudioPreprocessor:
             Lista de tuplas (t_start_s, t_end_s) de cada evento detectado.
         """
         frame_length = self.cfg.n_fft
-        hop          = self.cfg.hop_length
-        sr           = self.cfg.sample_rate
-        min_frames   = int(self.cfg.vad_min_duration * sr / hop)
+        hop = self.cfg.hop_length
+        sr = self.cfg.sample_rate
+        min_frames = int(self.cfg.vad_min_duration * sr / hop)
 
-        rms = librosa.feature.rms(
-            y=y, frame_length=frame_length, hop_length=hop
-        )[0]
+        rms = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop)[0]
 
         # Umbral adaptativo: proporción relativa a la energía máxima
         threshold = self.cfg.vad_energy_threshold * rms.max()
         active = rms > threshold
 
         # Detectar bordes activo/inactivo
-        events: List[Tuple[float, float]] = []
+        events: list[tuple[float, float]] = []
         in_event = False
         start_frame = 0
 
@@ -256,30 +285,30 @@ class AudioPreprocessor:
                 in_event = False
                 if (i - start_frame) >= min_frames:
                     t_start = librosa.frames_to_time(start_frame, sr=sr, hop_length=hop)
-                    t_end   = librosa.frames_to_time(i, sr=sr, hop_length=hop)
+                    t_end = librosa.frames_to_time(i, sr=sr, hop_length=hop)
                     events.append((float(t_start), float(t_end)))
 
         if in_event:
             t_start = librosa.frames_to_time(start_frame, sr=sr, hop_length=hop)
-            t_end   = len(y) / sr
+            t_end = len(y) / sr
             events.append((float(t_start), float(t_end)))
 
         return events
 
     # ── Segmentación uniforme ─────────────────────────────────────────────────
 
-    def segment(self, y: np.ndarray) -> List[np.ndarray]:
+    def segment(self, y: np.ndarray) -> list[np.ndarray]:
         """
         Divide el audio en segmentos de duración fija con solapamiento.
 
         Returns:
             Lista de arrays NumPy, cada uno de longitud segment_length muestras.
         """
-        sr              = self.cfg.sample_rate
-        segment_length  = int(self.cfg.segment_duration * sr)
-        hop_length      = int(self.cfg.hop_duration * sr)
+        sr = self.cfg.sample_rate
+        segment_length = int(self.cfg.segment_duration * sr)
+        hop_length = int(self.cfg.hop_duration * sr)
 
-        segments: List[np.ndarray] = []
+        segments: list[np.ndarray] = []
         start = 0
 
         while start + segment_length <= len(y):
@@ -291,7 +320,7 @@ class AudioPreprocessor:
         if start < len(y):
             seg = np.zeros(segment_length, dtype=np.float32)
             tail = y[start:]
-            seg[:len(tail)] = tail
+            seg[: len(tail)] = tail
             segments.append(seg)
 
         return segments
@@ -317,11 +346,11 @@ class AudioPreprocessor:
             fmax=self.cfg.fmax,
             power=self.cfg.power,
         )
-        mel      = np.maximum(mel, 1e-10)                       # floor: evita log(0)
-        ref_val  = float(np.max(mel))
+        mel = np.maximum(mel, 1e-10)  # floor: evita log(0)
+        ref_val = float(np.max(mel))
         # Si el frame es silencio (todo ≤ floor), ref=np.max daría 0 dB por normalización;
         # usar ref=1.0 produce ≈ −100 dB — representación física correcta.
-        ref      = ref_val if ref_val > 1e-9 else 1.0
+        ref = ref_val if ref_val > 1e-9 else 1.0
         return librosa.power_to_db(mel, ref=ref).astype(np.float32)
 
     def mfcc(self, y: np.ndarray, include_delta: bool = True) -> np.ndarray:
@@ -344,8 +373,8 @@ class AudioPreprocessor:
         if not include_delta:
             return mfcc.astype(np.float32)
 
-        delta   = librosa.feature.delta(mfcc, order=1)
-        delta2  = librosa.feature.delta(mfcc, order=2)
+        delta = librosa.feature.delta(mfcc, order=1)
+        delta2 = librosa.feature.delta(mfcc, order=2)
         return np.vstack([mfcc, delta, delta2]).astype(np.float32)
 
     def spectral_features(self, y: np.ndarray) -> dict:
@@ -355,31 +384,38 @@ class AudioPreprocessor:
         Returns:
             Diccionario con arrays 1D (media + std por feature).
         """
-        sr  = self.cfg.sample_rate
+        sr = self.cfg.sample_rate
         hop = self.cfg.hop_length
         n_fft = self.cfg.n_fft
 
-        def stats(arr: np.ndarray) -> Tuple[float, float]:
+        def stats(arr: np.ndarray) -> tuple[float, float]:
             return float(np.mean(arr)), float(np.std(arr))
 
-        zcr      = librosa.feature.zero_crossing_rate(y, hop_length=hop)[0]
-        sc       = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=n_fft, hop_length=hop)[0]
-        sb       = librosa.feature.spectral_bandwidth(y=y, sr=sr, n_fft=n_fft, hop_length=hop)[0]
-        sr_feat  = librosa.feature.spectral_rolloff(y=y, sr=sr, n_fft=n_fft, hop_length=hop)[0]
-        sf_feat  = librosa.feature.spectral_flatness(y=y, n_fft=n_fft, hop_length=hop)[0]
-        chroma   = librosa.feature.chroma_stft(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
+        zcr = librosa.feature.zero_crossing_rate(y, hop_length=hop)[0]
+        sc = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=n_fft, hop_length=hop)[0]
+        sb = librosa.feature.spectral_bandwidth(y=y, sr=sr, n_fft=n_fft, hop_length=hop)[0]
+        sr_feat = librosa.feature.spectral_rolloff(y=y, sr=sr, n_fft=n_fft, hop_length=hop)[0]
+        sf_feat = librosa.feature.spectral_flatness(y=y, n_fft=n_fft, hop_length=hop)[0]
+        chroma = librosa.feature.chroma_stft(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
         contrast = librosa.feature.spectral_contrast(y=y, sr=sr, n_fft=n_fft, hop_length=hop)
-        rms      = librosa.feature.rms(y=y, frame_length=n_fft, hop_length=hop)[0]
+        rms = librosa.feature.rms(y=y, frame_length=n_fft, hop_length=hop)[0]
 
         return {
-            "zcr_mean":           stats(zcr)[0],        "zcr_std":           stats(zcr)[1],
-            "spectral_centroid_mean": stats(sc)[0],     "spectral_centroid_std": stats(sc)[1],
-            "spectral_bandwidth_mean": stats(sb)[0],    "spectral_bandwidth_std": stats(sb)[1],
-            "spectral_rolloff_mean": stats(sr_feat)[0], "spectral_rolloff_std": stats(sr_feat)[1],
-            "spectral_flatness_mean": stats(sf_feat)[0],"spectral_flatness_std": stats(sf_feat)[1],
-            "chroma_mean":        float(chroma.mean()),  "chroma_std":        float(chroma.std()),
+            "zcr_mean": stats(zcr)[0],
+            "zcr_std": stats(zcr)[1],
+            "spectral_centroid_mean": stats(sc)[0],
+            "spectral_centroid_std": stats(sc)[1],
+            "spectral_bandwidth_mean": stats(sb)[0],
+            "spectral_bandwidth_std": stats(sb)[1],
+            "spectral_rolloff_mean": stats(sr_feat)[0],
+            "spectral_rolloff_std": stats(sr_feat)[1],
+            "spectral_flatness_mean": stats(sf_feat)[0],
+            "spectral_flatness_std": stats(sf_feat)[1],
+            "chroma_mean": float(chroma.mean()),
+            "chroma_std": float(chroma.std()),
             "spectral_contrast_mean": float(contrast.mean()),
-            "rms_mean":           stats(rms)[0],         "rms_std":           stats(rms)[1],
+            "rms_mean": stats(rms)[0],
+            "rms_std": stats(rms)[1],
         }
 
     def extract_features(self, y: np.ndarray) -> dict:
@@ -395,8 +431,8 @@ class AudioPreprocessor:
         """
         return {
             "mel_spectrogram": self.mel_spectrogram(y),
-            "mfcc":            self.mfcc(y, include_delta=True),
-            "spectral":        self.spectral_features(y),
+            "mfcc": self.mfcc(y, include_delta=True),
+            "spectral": self.spectral_features(y),
         }
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -437,14 +473,14 @@ class AudioPreprocessor:
         if self.cfg.normalize:
             y = self.normalize(y, method="peak")
 
-        events   = self.detect_events(y)
+        events = self.detect_events(y)
         segments = self.segment(y)
 
         result = {
-            "file":     Path(filepath).name,
-            "sr":       sr,
+            "file": Path(filepath).name,
+            "sr": sr,
             "duration": len(y) / sr,
-            "events":   events,
+            "events": events,
             "n_events": len(events),
             "segments": [],
         }
@@ -452,9 +488,9 @@ class AudioPreprocessor:
         for i, seg in enumerate(segments):
             t_start = i * self.cfg.hop_duration
             entry = {
-                "index":   i,
+                "index": i,
                 "t_start": t_start,
-                "t_end":   t_start + self.cfg.segment_duration,
+                "t_end": t_start + self.cfg.segment_duration,
                 "features": self.extract_features(seg),
             }
             if return_segments:
@@ -465,9 +501,7 @@ class AudioPreprocessor:
 
     # ── Guardar segmentos procesados ──────────────────────────────────────────
 
-    def save_segment(
-        self, audio: np.ndarray, output_path: str | Path
-    ) -> None:
+    def save_segment(self, audio: np.ndarray, output_path: str | Path) -> None:
         """Guarda un segmento de audio como WAV 16-bit."""
         sf.write(
             str(output_path),
@@ -481,6 +515,7 @@ class AudioPreprocessor:
 # 5. UTILIDADES DE VALIDACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def validate_audio_file(filepath: str | Path) -> dict:
     """
     Valida un archivo de audio y retorna sus metadatos.
@@ -492,18 +527,20 @@ def validate_audio_file(filepath: str | Path) -> dict:
     try:
         info = sf.info(str(filepath))
         return {
-            "valid":    True,
-            "sr":       info.samplerate,
+            "valid": True,
+            "sr": info.samplerate,
             "duration": info.duration,
             "channels": info.channels,
-            "format":   info.format,
-            "error":    None,
+            "format": info.format,
+            "error": None,
         }
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
 
-def batch_validate(directory: str | Path, extensions: tuple = (".wav", ".mp3", ".flac", ".ogg")) -> list:
+def batch_validate(
+    directory: str | Path, extensions: tuple = (".wav", ".mp3", ".flac", ".ogg")
+) -> list:
     """Valida todos los archivos de audio en un directorio."""
     directory = Path(directory)
     results = []
@@ -520,8 +557,8 @@ def batch_validate(directory: str | Path, extensions: tuple = (".wav", ".mp3", "
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
     import json
+    import sys
 
     if len(sys.argv) < 2:
         print("Uso: python preprocessor.py <archivo.wav> [preset]")
@@ -529,9 +566,9 @@ if __name__ == "__main__":
         sys.exit(0)
 
     filepath = sys.argv[1]
-    preset   = sys.argv[2] if len(sys.argv) > 2 else "default"
+    preset = sys.argv[2] if len(sys.argv) > 2 else "default"
 
-    cfg  = PRESETS.get(preset, AudioConfig())
+    cfg = PRESETS.get(preset, AudioConfig())
     proc = AudioPreprocessor(cfg)
 
     print(f"[INFO] Procesando: {filepath} con preset='{preset}'")
@@ -539,13 +576,17 @@ if __name__ == "__main__":
 
     # Serialización básica (sin arrays NumPy)
     summary = {
-        "file":     result["file"],
-        "sr":       result["sr"],
+        "file": result["file"],
+        "sr": result["sr"],
         "duration": round(result["duration"], 3),
         "n_events": result["n_events"],
-        "events":   [(round(s, 3), round(e, 3)) for s, e in result["events"]],
+        "events": [(round(s, 3), round(e, 3)) for s, e in result["events"]],
         "n_segments": len(result["segments"]),
-        "first_segment_features_keys": list(result["segments"][0]["features"].keys()) if result["segments"] else [],
-        "spectral_sample": result["segments"][0]["features"]["spectral"] if result["segments"] else {},
+        "first_segment_features_keys": (
+            list(result["segments"][0]["features"].keys()) if result["segments"] else []
+        ),
+        "spectral_sample": (
+            result["segments"][0]["features"]["spectral"] if result["segments"] else {}
+        ),
     }
     print(json.dumps(summary, indent=2, ensure_ascii=False))

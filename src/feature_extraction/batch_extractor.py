@@ -35,11 +35,9 @@ import json
 import logging
 import multiprocessing
 import os
-import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -49,72 +47,92 @@ logger = logging.getLogger(__name__)
 # 1. CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ExtractionConfig:
     # Rutas
-    input_dir:  str = "data/raw"
+    input_dir: str = "data/raw"
     output_dir: str = "data/spectrograms"
-    mfcc_dir:   str = "data/features/mfcc"
+    mfcc_dir: str = "data/features/mfcc"
 
     # Audio
-    sample_rate:     int   = 22_050
+    sample_rate: int = 22_050
     segment_duration: float = 3.0
-    hop_duration:     float = 1.5
+    hop_duration: float = 1.5
 
     # Grupo taxonómico (preset)
-    preset:     str = "default"
+    preset: str = "default"
 
     # Espectrograma Mel
-    n_fft:      int   = 2048
-    hop_length: int   = 512
-    n_mels:     int   = 128
-    fmin:       float = 50.0
-    fmax:       Optional[float] = None    # None = Nyquist
+    n_fft: int = 2048
+    hop_length: int = 512
+    n_mels: int = 128
+    fmin: float = 50.0
+    fmax: float | None = None  # None = Nyquist
 
     # MFCC
-    n_mfcc:     int  = 40
-    save_mfcc:  bool = True
+    n_mfcc: int = 40
+    save_mfcc: bool = True
 
     # Filtrado de calidad
-    min_duration_s:  float = 1.0
-    max_duration_s:  float = 60.0
-    apply_bandpass:  bool  = True
-    apply_nr:        bool  = True
+    min_duration_s: float = 1.0
+    max_duration_s: float = 60.0
+    apply_bandpass: bool = True
+    apply_nr: bool = True
 
     # Proceso
-    overwrite:  bool = False    # sobreescribir .npy existentes
-    n_workers:  int  = 0        # 0 = auto (cpu_count - 1)
-    max_per_class: Optional[int] = None  # límite por clase (None = sin límite)
+    overwrite: bool = False  # sobreescribir .npy existentes
+    n_workers: int = 0  # 0 = auto (cpu_count - 1)
+    max_per_class: int | None = None  # límite por clase (None = sin límite)
 
     # Formato de salida
-    normalize_output: bool = True   # escalar mel a [-1, 1] antes de guardar
+    normalize_output: bool = True  # escalar mel a [-1, 1] antes de guardar
     dtype: str = "float32"
 
 
 # Presets alineados con audio/preprocessor.py
-PRESET_OVERRIDES: Dict[str, dict] = {
+PRESET_OVERRIDES: dict[str, dict] = {
     "bats": {
-        "sample_rate": 192_000, "n_mels": 64,
-        "fmin": 10_000, "fmax": 96_000,
-        "segment_duration": 0.5, "hop_duration": 0.25,
-        "n_fft": 1024, "hop_length": 128,
+        "sample_rate": 192_000,
+        "n_mels": 64,
+        "fmin": 10_000,
+        "fmax": 96_000,
+        "segment_duration": 0.5,
+        "hop_duration": 0.25,
+        "n_fft": 1024,
+        "hop_length": 128,
     },
     "frogs": {
-        "sample_rate": 22_050, "n_mels": 128,
-        "fmin": 100, "fmax": 10_000,
+        "sample_rate": 22_050,
+        "n_mels": 128,
+        "fmin": 100,
+        "fmax": 10_000,
         "segment_duration": 3.0,
     },
     "insects": {
-        "sample_rate": 44_100, "n_mels": 128,
+        "sample_rate": 44_100,
+        "n_mels": 128,
         "fmin": 200,
     },
     "mammals": {
-        "sample_rate": 44_100, "n_mels": 128,
+        "sample_rate": 44_100,
+        "n_mels": 128,
         "fmin": 50,
     },
+    "birds": {
+        "sample_rate": 44_100,
+        "n_mels": 128,
+        "fmin": 200,
+        "fmax": 12_000,
+        "segment_duration": 3.0,
+        "hop_duration": 1.5,
+        "max_duration_s": 180.0,
+    },
     "reptiles": {
-        "sample_rate": 22_050, "n_mels": 64,
-        "fmin": 50, "fmax": 8_000,
+        "sample_rate": 22_050,
+        "n_mels": 64,
+        "fmin": 50,
+        "fmax": 8_000,
         "segment_duration": 5.0,
     },
 }
@@ -133,7 +151,8 @@ def apply_preset(cfg: ExtractionConfig, preset: str) -> ExtractionConfig:
 # 2. WORKER: PROCESAMIENTO DE UN ARCHIVO (ejecuta en proceso separado)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _process_single_file(args: Tuple) -> dict:
+
+def _process_single_file(args: tuple) -> dict:
     """
     Worker: extrae espectrogramas Mel de un archivo de audio.
     Diseñado para ser serializable por pickle (multiprocessing).
@@ -142,7 +161,7 @@ def _process_single_file(args: Tuple) -> dict:
         {'file': str, 'status': ok|skip|error,
          'n_segments': int, 'error': str|None}
     """
-    (filepath, class_label, out_dir, mfcc_dir, cfg_dict, idx) = args
+    filepath, class_label, out_dir, mfcc_dir, cfg_dict, idx = args
     cfg = ExtractionConfig(**cfg_dict)
 
     # Import dentro del worker para compatibilidad con multiproceso
@@ -150,7 +169,7 @@ def _process_single_file(args: Tuple) -> dict:
     import soundfile as sf
 
     filepath = Path(filepath)
-    out_dir  = Path(out_dir) / class_label
+    out_dir = Path(out_dir) / class_label
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.save_mfcc:
@@ -161,19 +180,34 @@ def _process_single_file(args: Tuple) -> dict:
     try:
         info = sf.info(str(filepath))
         if not (cfg.min_duration_s <= info.duration <= cfg.max_duration_s):
-            return {"file": filepath.name, "status": "skip",
-                    "n_segments": 0, "error": f"duration={info.duration:.1f}s"}
+            return {
+                "file": filepath.name,
+                "class": class_label,
+                "status": "skip",
+                "n_segments": 0,
+                "error": f"duration={info.duration:.1f}s",
+            }
     except Exception as e:
-        return {"file": filepath.name, "status": "error",
-                "n_segments": 0, "error": str(e)}
+        return {
+            "file": filepath.name,
+            "class": class_label,
+            "status": "error",
+            "n_segments": 0,
+            "error": str(e),
+        }
 
     # ── Verificar si ya está procesado ────────────────────────────────────────
-    file_hash = hashlib.md5(filepath.name.encode()).hexdigest()[:8]
-    pattern   = f"{file_hash}_s*.npy"
-    existing  = list(out_dir.glob(pattern))
+    file_hash = hashlib.sha256(filepath.name.encode()).hexdigest()[:8]
+    pattern = f"{file_hash}_s*.npy"
+    existing = list(out_dir.glob(pattern))
     if existing and not cfg.overwrite:
-        return {"file": filepath.name, "status": "skip",
-                "n_segments": len(existing), "error": None}
+        return {
+            "file": filepath.name,
+            "class": class_label,
+            "status": "skip",
+            "n_segments": len(existing),
+            "error": None,
+        }
 
     # ── Carga y preprocesamiento ──────────────────────────────────────────────
     try:
@@ -184,15 +218,21 @@ def _process_single_file(args: Tuple) -> dict:
             dtype=np.float32,
         )
     except Exception as e:
-        return {"file": filepath.name, "status": "error",
-                "n_segments": 0, "error": f"load: {e}"}
+        return {
+            "file": filepath.name,
+            "class": class_label,
+            "status": "error",
+            "n_segments": 0,
+            "error": f"load: {e}",
+        }
 
     # Filtro pasa-banda
     if cfg.apply_bandpass:
         try:
             from scipy.signal import butter, filtfilt
-            nyq  = cfg.sample_rate / 2.0
-            low  = max(1e-6, cfg.fmin / nyq)
+
+            nyq = cfg.sample_rate / 2.0
+            low = max(1e-6, cfg.fmin / nyq)
             high = min(0.9999, (cfg.fmax or nyq * 0.95) / nyq)
             if low < high:
                 b, a = butter(4, [low, high], btype="band")
@@ -204,11 +244,14 @@ def _process_single_file(args: Tuple) -> dict:
     if cfg.apply_nr:
         try:
             import noisereduce as nr
+
             n_noise = min(int(0.5 * cfg.sample_rate), len(y) // 4)
             if n_noise > 0:
                 y = nr.reduce_noise(
-                    y=y, y_noise=y[:n_noise],
-                    sr=cfg.sample_rate, stationary=True,
+                    y=y,
+                    y_noise=y[:n_noise],
+                    sr=cfg.sample_rate,
+                    stationary=True,
                     prop_decrease=0.75,
                 ).astype(np.float32)
         except ImportError:
@@ -224,22 +267,27 @@ def _process_single_file(args: Tuple) -> dict:
     # ── Segmentación ─────────────────────────────────────────────────────────
     seg_len = int(cfg.segment_duration * cfg.sample_rate)
     hop_len = int(cfg.hop_duration * cfg.sample_rate)
-    segments: List[np.ndarray] = []
+    segments: list[np.ndarray] = []
 
     start = 0
     while start + seg_len <= len(y):
-        segments.append(y[start:start + seg_len])
+        segments.append(y[start : start + seg_len])
         start += hop_len
 
     if start < len(y):
         pad = np.zeros(seg_len, dtype=np.float32)
         tail = y[start:]
-        pad[:len(tail)] = tail
+        pad[: len(tail)] = tail
         segments.append(pad)
 
     if not segments:
-        return {"file": filepath.name, "status": "skip",
-                "n_segments": 0, "error": "audio demasiado corto"}
+        return {
+            "file": filepath.name,
+            "class": class_label,
+            "status": "skip",
+            "n_segments": 0,
+            "error": "audio demasiado corto",
+        }
 
     # ── Extracción de features por segmento ──────────────────────────────────
     saved = 0
@@ -251,8 +299,10 @@ def _process_single_file(args: Tuple) -> dict:
 
         # Mel spectrogram (n_mels, T)
         mel = librosa.feature.melspectrogram(
-            y=seg, sr=cfg.sample_rate,
-            n_fft=cfg.n_fft, hop_length=cfg.hop_length,
+            y=seg,
+            sr=cfg.sample_rate,
+            n_fft=cfg.n_fft,
+            hop_length=cfg.hop_length,
             n_mels=cfg.n_mels,
             fmin=cfg.fmin,
             fmax=cfg.fmax,
@@ -273,14 +323,15 @@ def _process_single_file(args: Tuple) -> dict:
             mfcc_path = Path(mfcc_dir) / class_label / f"{file_hash}_s{seg_idx:04d}.npy"
             if not mfcc_path.exists() or cfg.overwrite:
                 mfcc = librosa.feature.mfcc(
-                    y=seg, sr=cfg.sample_rate,
+                    y=seg,
+                    sr=cfg.sample_rate,
                     n_mfcc=cfg.n_mfcc,
                     n_fft=cfg.n_fft,
                     hop_length=cfg.hop_length,
                     fmin=cfg.fmin,
                     fmax=cfg.fmax,
                 )
-                delta  = librosa.feature.delta(mfcc, order=1)
+                delta = librosa.feature.delta(mfcc, order=1)
                 delta2 = librosa.feature.delta(mfcc, order=2)
                 mfcc_full = np.vstack([mfcc, delta, delta2]).astype(np.float32)
                 np.save(str(mfcc_path), mfcc_full)
@@ -288,16 +339,18 @@ def _process_single_file(args: Tuple) -> dict:
         saved += 1
 
     return {
-        "file":       filepath.name,
-        "status":     "ok",
+        "file": filepath.name,
+        "class": class_label,
+        "status": "ok",
         "n_segments": saved,
-        "error":      None,
+        "error": None,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. ORQUESTADOR PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class BatchExtractor:
     """
@@ -317,30 +370,27 @@ class BatchExtractor:
         if cfg.save_mfcc:
             Path(cfg.mfcc_dir).mkdir(parents=True, exist_ok=True)
 
-    def _collect_files(self) -> List[Tuple[str, str]]:
+    def _collect_files(self) -> list[tuple[str, str]]:
         """
         Recorre input_dir y recopila (filepath, class_label).
         Respeta max_per_class si está configurado.
         """
         input_dir = Path(self.cfg.input_dir)
-        files: List[Tuple[str, str]] = []
+        files: list[tuple[str, str]] = []
 
         for class_dir in sorted(input_dir.iterdir()):
             if not class_dir.is_dir():
                 continue
-            class_files = [
-                fp for fp in class_dir.iterdir()
-                if fp.suffix.lower() in self.AUDIO_EXTS
-            ]
+            class_files = [fp for fp in class_dir.iterdir() if fp.suffix.lower() in self.AUDIO_EXTS]
             if self.cfg.max_per_class:
-                class_files = class_files[:self.cfg.max_per_class]
+                class_files = class_files[: self.cfg.max_per_class]
             for fp in class_files:
                 files.append((str(fp), class_dir.name))
 
-        logger.info(f"Archivos encontrados: {len(files)} en {len(set(c for _, c in files))} clases")
+        logger.info(f"Archivos encontrados: {len(files)} en {len({c for _, c in files})} clases")
         return files
 
-    def run(self, workers: Optional[int] = None) -> dict:
+    def run(self, workers: int | None = None) -> dict:
         """
         Ejecuta la extracción en batch con multiprocessing.
 
@@ -367,9 +417,9 @@ class BatchExtractor:
             for i, (fp, cls) in enumerate(files)
         ]
 
-        results: List[dict] = []
-        errors:  List[str]  = []
-        skipped: int        = 0
+        results: list[dict] = []
+        errors: list[str] = []
+        skipped: int = 0
 
         # Usar n_workers=1 como single-process si hay problemas con multiprocessing
         if n_workers == 1 or os.name == "nt":  # Windows puede tener problemas con fork
@@ -386,8 +436,7 @@ class BatchExtractor:
         else:
             with ProcessPoolExecutor(max_workers=n_workers) as executor:
                 future_to_args = {
-                    executor.submit(_process_single_file, args): args
-                    for args in work_args
+                    executor.submit(_process_single_file, args): args for args in work_args
                 }
                 for i, future in enumerate(as_completed(future_to_args)):
                     try:
@@ -410,7 +459,7 @@ class BatchExtractor:
             json.dump(report, f, indent=2)
 
         logger.info(f"\n{'='*50}")
-        logger.info(f"EXTRACCIÓN COMPLETADA")
+        logger.info("EXTRACCIÓN COMPLETADA")
         logger.info(f"  Total archivos:   {len(files)}")
         logger.info(f"  OK:               {report['n_ok']}")
         logger.info(f"  Saltados (cache): {skipped}")
@@ -421,10 +470,11 @@ class BatchExtractor:
 
         return report
 
-    def _build_report(self, results: List[dict], errors: List[str], skipped: int) -> dict:
+    def _build_report(self, results: list[dict], errors: list[str], skipped: int) -> dict:
         """Construye el reporte de cobertura por clase."""
         from collections import defaultdict
-        class_stats: Dict[str, dict] = defaultdict(lambda: {"files": 0, "segments": 0, "errors": 0})
+
+        class_stats: dict[str, dict] = defaultdict(lambda: {"files": 0, "segments": 0, "errors": 0})
 
         # Obtener clases del output_dir actual
         out_dir = Path(self.cfg.output_dir)
@@ -443,13 +493,13 @@ class BatchExtractor:
         total_segments = sum(v["segments"] for v in class_stats.values())
 
         return {
-            "n_files":        len(results),
-            "n_ok":           sum(1 for r in results if r["status"] == "ok"),
-            "n_skipped":      skipped,
-            "n_errors":       len(errors),
+            "n_files": len(results),
+            "n_ok": sum(1 for r in results if r["status"] == "ok"),
+            "n_skipped": skipped,
+            "n_errors": len(errors),
             "total_segments": total_segments,
-            "classes":        dict(class_stats),
-            "errors":         errors[:50],  # máximo 50 errores en el reporte
+            "classes": dict(class_stats),
+            "errors": errors[:50],  # máximo 50 errores en el reporte
         }
 
     def validate(self) -> dict:
@@ -458,9 +508,9 @@ class BatchExtractor:
         Verifica que cada archivo sea cargable y tenga la forma correcta.
         """
         out_dir = Path(self.cfg.output_dir)
-        corrupt: List[str] = []
-        shape_errors: List[str] = []
-        class_counts: Dict[str, int] = {}
+        corrupt: list[str] = []
+        shape_errors: list[str] = []
+        class_counts: dict[str, int] = {}
 
         for class_dir in sorted(out_dir.iterdir()):
             if not class_dir.is_dir():
@@ -483,14 +533,14 @@ class BatchExtractor:
         max_c = max(class_counts.values()) if class_counts else 0
 
         report = {
-            "total_valid_files":  total,
-            "n_classes":          len(class_counts),
+            "total_valid_files": total,
+            "n_classes": len(class_counts),
             "min_segments_class": min_c,
             "max_segments_class": max_c,
-            "imbalance_ratio":    round(max_c / max(min_c, 1), 2),
-            "corrupt_files":      corrupt,
-            "shape_errors":       shape_errors[:20],
-            "class_counts":       class_counts,
+            "imbalance_ratio": round(max_c / max(min_c, 1), 2),
+            "corrupt_files": corrupt,
+            "shape_errors": shape_errors[:20],
+            "class_counts": class_counts,
         }
 
         logger.info(f"Validación: {total} segmentos válidos en {len(class_counts)} clases")
@@ -506,6 +556,7 @@ class BatchExtractor:
 # 4. UTILIDAD: VISUALIZAR MUESTRA DE ESPECTROGRAMAS
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def preview_spectrograms(
     output_dir: str = "data/spectrograms",
     n_per_class: int = 2,
@@ -515,17 +566,19 @@ def preview_spectrograms(
     Visualiza una muestra aleatoria de espectrogramas del dataset extraído.
     Útil para verificar la calidad del preprocesamiento.
     """
-    import matplotlib.pyplot as plt
     import random
 
-    out_dir     = Path(output_dir)
-    class_dirs  = sorted([d for d in out_dir.iterdir() if d.is_dir()])
+    import matplotlib.pyplot as plt
+
+    out_dir = Path(output_dir)
+    class_dirs = sorted([d for d in out_dir.iterdir() if d.is_dir()])
     if not class_dirs:
         logger.warning("No hay espectrogramas para previsualizar.")
         return
 
     fig, axes = plt.subplots(
-        len(class_dirs), n_per_class,
+        len(class_dirs),
+        n_per_class,
         figsize=(n_per_class * 4, len(class_dirs) * 2.5),
     )
     if len(class_dirs) == 1:
@@ -539,8 +592,7 @@ def preview_spectrograms(
             ax = axes[row][col] if n_per_class > 1 else axes[row]
             if col < len(sample):
                 mel = np.load(str(sample[col]))
-                ax.imshow(mel, aspect="auto", origin="lower",
-                          cmap="magma", interpolation="nearest")
+                ax.imshow(mel, aspect="auto", origin="lower", cmap="magma", interpolation="nearest")
                 ax.set_title(f"{cls_dir.name}\n{mel.shape}", fontsize=7)
             ax.axis("off")
 
@@ -563,27 +615,30 @@ if __name__ == "__main__":
     )
 
     parser = argparse.ArgumentParser(description="BioAcoustics — Batch Feature Extractor")
-    parser.add_argument("--input",    default="data/raw",          help="Directorio de audio crudo")
-    parser.add_argument("--output",   default="data/spectrograms", help="Directorio de salida .npy")
+    parser.add_argument("--input", default="data/raw", help="Directorio de audio crudo")
+    parser.add_argument("--output", default="data/spectrograms", help="Directorio de salida .npy")
     parser.add_argument("--mfcc-dir", default="data/features/mfcc", help="Directorio de MFCC")
-    parser.add_argument("--preset",   default="default",
-                        choices=list(PRESET_OVERRIDES.keys()) + ["default"],
-                        help="Preset de configuración por grupo taxonómico")
-    parser.add_argument("--workers",  type=int, default=0,  help="Número de workers (0=auto)")
-    parser.add_argument("--overwrite",action="store_true",  help="Sobreescribir .npy existentes")
-    parser.add_argument("--validate", action="store_true",  help="Solo validar dataset extraído")
-    parser.add_argument("--preview",  action="store_true",  help="Generar preview de espectrogramas")
+    parser.add_argument(
+        "--preset",
+        default="default",
+        choices=list(PRESET_OVERRIDES.keys()) + ["default"],
+        help="Preset de configuración por grupo taxonómico",
+    )
+    parser.add_argument("--workers", type=int, default=0, help="Número de workers (0=auto)")
+    parser.add_argument("--overwrite", action="store_true", help="Sobreescribir .npy existentes")
+    parser.add_argument("--validate", action="store_true", help="Solo validar dataset extraído")
+    parser.add_argument("--preview", action="store_true", help="Generar preview de espectrogramas")
     parser.add_argument("--max-per-class", type=int, default=None)
     args = parser.parse_args()
 
     cfg = ExtractionConfig(
-        input_dir     = args.input,
-        output_dir    = args.output,
-        mfcc_dir      = args.mfcc_dir,
-        preset        = args.preset,
-        overwrite     = args.overwrite,
-        n_workers     = args.workers,
-        max_per_class = args.max_per_class,
+        input_dir=args.input,
+        output_dir=args.output,
+        mfcc_dir=args.mfcc_dir,
+        preset=args.preset,
+        overwrite=args.overwrite,
+        n_workers=args.workers,
+        max_per_class=args.max_per_class,
     )
     cfg = apply_preset(cfg, args.preset)
 
@@ -598,11 +653,16 @@ if __name__ == "__main__":
 
     else:
         report = extractor.run(workers=args.workers)
-        print(json.dumps({
-            "total_files":    report["n_files"],
-            "ok":             report["n_ok"],
-            "skipped":        report["n_skipped"],
-            "errors":         report["n_errors"],
-            "total_segments": report["total_segments"],
-            "classes":        {k: v["segments"] for k, v in report["classes"].items()},
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "total_files": report["n_files"],
+                    "ok": report["n_ok"],
+                    "skipped": report["n_skipped"],
+                    "errors": report["n_errors"],
+                    "total_segments": report["total_segments"],
+                    "classes": {k: v["segments"] for k, v in report["classes"].items()},
+                },
+                indent=2,
+            )
+        )

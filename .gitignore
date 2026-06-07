@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.isorted
+
+# Distribution
+*.whl
+*.tar.gz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+
+# Models & data (large files)
+models/trained/
+models/**/*.pt
+models/**/*.pth
+models/**/*.onnx
+data/raw/
+data/processed/
+data/spectrograms/
+data/features/
+data/quarantine/
+data/app/
+audio_data/
+*.npy
+*.npz
+
+# MLflow
+mlruns/
+mlflow.db
+
+# Logs
+logs/
+*.log
+*.jsonl
+
+# Local run artifacts
+results/
+data/**/dataset_manifest.json
+data/**/extraction_report.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Docker volumes
+postgres_data/
+pgadmin_data/
+mlflow_data/
+results_data/
+
+# Alembic
+alembic/versions/*.pyc
+
+# Ruff / mypy cache
+.ruff_cache/
+.mypy_cache/

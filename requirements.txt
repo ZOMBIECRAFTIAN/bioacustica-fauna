@@ -9,7 +9,10 @@
 librosa>=0.10.0
 soundfile>=0.12.1
 noisereduce>=3.0.0
-pyaudio>=0.2.14           # adquisición en tiempo real (requiere PortAudio)
+# pyaudio>=0.2.14         # OPCIONAL: monitor en tiempo real — requiere PortAudio
+#   Linux:   sudo apt install portaudio19-dev && pip install pyaudio
+#   macOS:   brew install portaudio && pip install pyaudio
+#   Windows: pip install pipwin && pipwin install pyaudio
 
 # ── Machine Learning / Deep Learning ──────────────────────────────────────────
 # torch / torchvision / torchaudio → instalar manualmente (ver arriba)

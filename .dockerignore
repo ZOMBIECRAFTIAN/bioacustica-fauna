@@ -21,22 +21,34 @@ dist/
 build/
 *.egg
 
-# Datos crudos y modelos (se montan como volúmenes)
+# Datos crudos, procesados y modelos (se montan como volúmenes)
 data/raw/
 data/processed/
-models/*.pth
-models/*.pt
-models/*.onnx
+data/spectrograms/
+data/features/
+data/quarantine/
+data/app/
+audio_data/
+*.npy
+*.npz
+models/trained/
+models/**/*.pth
+models/**/*.pt
+models/**/*.onnx
 
 # Resultados y logs (se montan como volúmenes)
 results/
 logs/
 mlruns/
+mlflow.db
+*.jsonl
 
 # Tests (no necesarios en imagen de producción)
 tests/
 pytest_cache/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 coverage.xml
 .coverage
 htmlcov/
@@ -68,6 +80,7 @@ docker/
 *.temp
 *.log
 *.bak
+*.isorted
 
 # Node (si se generaron documentos Word localmente)
 node_modules/

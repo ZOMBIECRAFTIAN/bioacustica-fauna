@@ -22,9 +22,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,6 +33,7 @@ logger = logging.getLogger(__name__)
 # ── Importación condicional de timm ──────────────────────────────────────────
 try:
     import timm
+
     TIMM_AVAILABLE = True
 except ImportError:
     TIMM_AVAILABLE = False
@@ -44,6 +43,7 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. MODELO PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class EfficientNetBioAcoustic(nn.Module):
     """
@@ -82,7 +82,7 @@ class EfficientNetBioAcoustic(nn.Module):
         if not TIMM_AVAILABLE:
             raise ImportError("Instalar timm: pip install timm")
 
-        self.n_classes   = n_classes
+        self.n_classes = n_classes
         self.backbone_name = backbone
         self.in_channels = in_channels
 
@@ -91,9 +91,9 @@ class EfficientNetBioAcoustic(nn.Module):
         self.backbone = timm.create_model(
             backbone,
             pretrained=pretrained,
-            num_classes=0,        # no head → devuelve features
-            global_pool="avg",    # global average pooling
-            in_chans=3,           # siempre 3 internamente
+            num_classes=0,  # no head → devuelve features
+            global_pool="avg",  # global average pooling
+            in_chans=3,  # siempre 3 internamente
         )
 
         # Dimensión de salida del backbone (feature dim)
@@ -171,12 +171,12 @@ class EfficientNetBioAcoustic(nn.Module):
         # Proyección de canal si es mono
         x = self.channel_proj(x)  # (B, 1, H, W) → (B, 3, H, W)
 
-        features = self.backbone(x)   # (B, feat_dim)
+        features = self.backbone(x)  # (B, feat_dim)
 
         if return_features:
             return features
 
-        return self.head(features)    # (B, n_classes)
+        return self.head(features)  # (B, n_classes)
 
     def predict_proba(self, x: torch.Tensor) -> torch.Tensor:
         return F.softmax(self.forward(x), dim=-1)
@@ -194,6 +194,7 @@ class EfficientNetBioAcoustic(nn.Module):
 # 2. ENTRENADOR CON FINE-TUNING PROGRESIVO
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class ProgressiveFinetuner:
     """
     Entrenamiento en tres fases con descongelamiento progresivo:
@@ -206,27 +207,27 @@ class ProgressiveFinetuner:
     """
 
     PHASES = {
-        1: {"lr": 1e-3,  "unfreeze": "head"},
-        2: {"lr": 1e-4,  "unfreeze": "last_blocks", "n_blocks": 3},
-        3: {"lr": 5e-5,  "unfreeze": "all"},
+        1: {"lr": 1e-3, "unfreeze": "head"},
+        2: {"lr": 1e-4, "unfreeze": "last_blocks", "n_blocks": 3},
+        3: {"lr": 5e-5, "unfreeze": "all"},
     }
 
     def __init__(
         self,
         model: EfficientNetBioAcoustic,
         train_loader: DataLoader,
-        val_loader:   DataLoader,
-        output_dir:   str | Path = "models/trained",
+        val_loader: DataLoader,
+        output_dir: str | Path = "models/trained",
         epochs_phase1: int = 15,
         epochs_phase2: int = 20,
         epochs_phase3: int = 15,
-        device: Optional[str] = None,
-        class_weights: Optional[torch.Tensor] = None,
+        device: str | None = None,
+        class_weights: torch.Tensor | None = None,
     ):
-        self.model          = model
-        self.train_loader   = train_loader
-        self.val_loader     = val_loader
-        self.output_dir     = Path(output_dir)
+        self.model = model
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.epochs = {1: epochs_phase1, 2: epochs_phase2, 3: epochs_phase3}
 
@@ -237,15 +238,19 @@ class ProgressiveFinetuner:
             weight=class_weights.to(self.device) if class_weights is not None else None,
             label_smoothing=0.1,
         )
-        self.history: Dict[str, list] = {
-            "train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []
+        self.history: dict[str, list] = {
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
         }
         self.best_val_loss = float("inf")
 
     def _make_optimizer(self, lr: float):
         return torch.optim.AdamW(
             filter(lambda p: p.requires_grad, self.model.parameters()),
-            lr=lr, weight_decay=1e-4,
+            lr=lr,
+            weight_decay=1e-4,
         )
 
     def _make_scheduler(self, optimizer, epochs: int):
@@ -258,15 +263,15 @@ class ProgressiveFinetuner:
             anneal_strategy="cos",
         )
 
-    def _run_epoch(self, optimizer, scheduler=None, train: bool = True) -> Tuple[float, float]:
+    def _run_epoch(self, optimizer, scheduler=None, train: bool = True) -> tuple[float, float]:
         self.model.train(train)
         total_loss, correct, total = 0.0, 0, 0
 
         with torch.set_grad_enabled(train):
-            for x, y in (self.train_loader if train else self.val_loader):
+            for x, y in self.train_loader if train else self.val_loader:
                 x, y = x.to(self.device), y.to(self.device)
                 logits = self.model(x)
-                loss   = self.criterion(logits, y)
+                loss = self.criterion(logits, y)
 
                 if train:
                     optimizer.zero_grad()
@@ -277,13 +282,13 @@ class ProgressiveFinetuner:
                         scheduler.step()
 
                 total_loss += loss.item() * x.size(0)
-                correct    += (logits.argmax(1) == y).sum().item()
-                total      += x.size(0)
+                correct += (logits.argmax(1) == y).sum().item()
+                total += x.size(0)
 
         return total_loss / total, correct / total
 
     def _run_phase(self, phase: int):
-        cfg    = self.PHASES[phase]
+        cfg = self.PHASES[phase]
         epochs = self.epochs[phase]
 
         # Descongelar según fase
@@ -294,8 +299,8 @@ class ProgressiveFinetuner:
         elif cfg["unfreeze"] == "all":
             self.model.unfreeze_all()
 
-        optimizer  = self._make_optimizer(cfg["lr"])
-        scheduler  = self._make_scheduler(optimizer, epochs)
+        optimizer = self._make_optimizer(cfg["lr"])
+        scheduler = self._make_scheduler(optimizer, epochs)
         best_phase = float("inf")
 
         logger.info(f"\n{'='*60}")
@@ -336,17 +341,20 @@ class ProgressiveFinetuner:
 
     def _save_checkpoint(self, epoch: int, phase: int, val_loss: float, val_acc: float):
         path = self.output_dir / "best_efficientnet.pt"
-        torch.save({
-            "epoch":         epoch,
-            "phase":         phase,
-            "model_state":   self.model.state_dict(),
-            "val_loss":      val_loss,
-            "val_acc":       val_acc,
-            "n_classes":     self.model.n_classes,
-            "backbone":      self.model.backbone_name,
-            "in_channels":   self.model.in_channels,
-            "history":       self.history,
-        }, path)
+        torch.save(
+            {
+                "epoch": epoch,
+                "phase": phase,
+                "model_state": self.model.state_dict(),
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+                "n_classes": self.model.n_classes,
+                "backbone": self.model.backbone_name,
+                "in_channels": self.model.in_channels,
+                "history": self.history,
+            },
+            path,
+        )
         logger.info(f"  ✓ Checkpoint → {path} (val_loss={val_loss:.4f})")
 
     def fit(self) -> dict:
@@ -363,6 +371,7 @@ class ProgressiveFinetuner:
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. CARGA DE CHECKPOINT Y UTILIDADES
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def load_efficientnet(
     checkpoint_path: str | Path,
@@ -393,7 +402,7 @@ def compare_backbones(n_classes: int = 50) -> dict:
 
     results = {}
     backbones = ["efficientnet_b0", "efficientnet_b4", "mobilenetv3_large_100"]
-    dummy    = torch.randn(8, 1, 128, 128)
+    dummy = torch.randn(8, 1, 128, 128)
 
     for bb in backbones:
         try:
@@ -408,8 +417,8 @@ def compare_backbones(n_classes: int = 50) -> dict:
             elapsed = (time.time() - t0) / 20 * 1000  # ms por batch
 
             results[bb] = {
-                "params":        m.count_parameters(),
-                "feat_dim":      m.feat_dim,
+                "params": m.count_parameters(),
+                "feat_dim": m.feat_dim,
                 "ms_per_batch8": round(elapsed, 2),
             }
         except Exception as e:
@@ -422,10 +431,10 @@ def compare_backbones(n_classes: int = 50) -> dict:
 # 4. CONFIGURACIÓN RECOMENDADA POR GRUPO TAXONÓMICO
 # ─────────────────────────────────────────────────────────────────────────────
 
-RECOMMENDED_CONFIG: Dict[str, dict] = {
+RECOMMENDED_CONFIG: dict[str, dict] = {
     "bats": {
         "backbone": "efficientnet_b0",
-        "input_size": (64, 256),    # (n_mels, T) — muestreo ultrasónico
+        "input_size": (64, 256),  # (n_mels, T) — muestreo ultrasónico
         "dropout": 0.3,
         "epochs": (10, 15, 10),
         "note": "Alta variabilidad intra-clase; usar MixUp fuerte (alpha=0.6)",
@@ -470,8 +479,8 @@ if __name__ == "__main__":
         n_classes=N_CLASSES,
         backbone="efficientnet_b0",
         in_channels=1,
-        frozen_backbone=True,   # Fase 1: solo head
-        pretrained=False,       # False para demo sin descarga
+        frozen_backbone=True,  # Fase 1: solo head
+        pretrained=False,  # False para demo sin descarga
     )
 
     print(f"Backbone: {model.backbone_name}")
@@ -481,8 +490,8 @@ if __name__ == "__main__":
     # Forward pass de prueba
     dummy = torch.randn(4, 1, 128, 128)
     with torch.no_grad():
-        logits   = model(dummy)
-        probs    = model.predict_proba(dummy)
+        logits = model(dummy)
+        probs = model.predict_proba(dummy)
         embeddings = model.get_embeddings(dummy)
 
     print(f"\nInput:      {dummy.shape}")

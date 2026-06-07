@@ -56,7 +56,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -71,12 +70,13 @@ logger = logging.getLogger(__name__)
 # UTILIDADES DE CARGA
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def load_model(
     checkpoint_path: str,
-    model_type:      str,
-    n_classes:       int,
-    backbone:        str = "efficientnet_b0",
-    device:          str = "cpu",
+    model_type: str,
+    n_classes: int,
+    backbone: str = "efficientnet_b0",
+    device: str = "cpu",
 ) -> nn.Module:
     """
     Carga el modelo desde checkpoint según el tipo.
@@ -97,25 +97,28 @@ def load_model(
 
     if model_type == "cnn_baseline":
         from src.models.cnn_baseline import BioAcousticCNN
+
         cfg = ckpt.get("config", {})
         model = BioAcousticCNN(
-            n_classes  = n_classes,
-            n_mels     = cfg.get("n_mels", 128),
-            base_ch    = cfg.get("base_ch", 32),
-            dropout    = 0.0,
+            n_classes=n_classes,
+            n_mels=cfg.get("n_mels", 128),
+            base_ch=cfg.get("base_ch", 32),
+            dropout=0.0,
         )
 
     elif model_type == "efficientnet":
         from src.models.efficientnet_classifier import EfficientNetBioAcoustic
+
         model = EfficientNetBioAcoustic(
-            n_classes = n_classes,
-            backbone  = backbone,
-            pretrained= False,
-            dropout   = 0.0,
+            n_classes=n_classes,
+            backbone=backbone,
+            pretrained=False,
+            dropout=0.0,
         )
 
     elif model_type == "panns":
         from src.models.panns_classifier import PANNSCNN14BioAcoustic
+
         model = PANNSCNN14BioAcoustic(n_classes=n_classes, dropout=0.0)
 
     else:
@@ -133,11 +136,12 @@ def load_model(
 # FORMA DE ENTRADA
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _dummy_input(
     model_type: str,
-    n_mels:     int = 128,
-    n_frames:   int = 256,
-    device:     str = "cpu",
+    n_mels: int = 128,
+    n_frames: int = 256,
+    device: str = "cpu",
 ) -> torch.Tensor:
     """
     Tensor de entrada sintético (batch=1).
@@ -155,11 +159,12 @@ def _dummy_input(
 # EXPORTACIÓN TORCHSCRIPT
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def export_torchscript(
-    model:      nn.Module,
-    dummy_in:   torch.Tensor,
+    model: nn.Module,
+    dummy_in: torch.Tensor,
     output_dir: Path,
-    filename:   str = "model.pt",
+    filename: str = "model.pt",
 ) -> Path:
     """
     Exporta el modelo a TorchScript via torch.jit.trace.
@@ -185,7 +190,7 @@ def export_torchscript(
 
     # Verificar reproducibilidad
     with torch.no_grad():
-        out_orig   = model(dummy_in)
+        out_orig = model(dummy_in)
         out_traced = traced(dummy_in)
 
     diff = (out_orig - out_traced).abs().max().item()
@@ -205,13 +210,14 @@ def export_torchscript(
 # EXPORTACIÓN ONNX
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def export_onnx(
-    model:         nn.Module,
-    dummy_in:      torch.Tensor,
-    output_dir:    Path,
-    filename:      str = "model.onnx",
+    model: nn.Module,
+    dummy_in: torch.Tensor,
+    output_dir: Path,
+    filename: str = "model.onnx",
     opset_version: int = 17,
-    dynamic_axes:  bool = True,
+    dynamic_axes: bool = True,
 ) -> Path:
     """
     Exporta a ONNX.
@@ -228,12 +234,12 @@ def export_onnx(
     model.eval()
 
     out_path = output_dir / filename
-    input_shape = dummy_in.shape   # (1, 1, H, W)
+    input_shape = dummy_in.shape  # (1, 1, H, W)
 
     dynamic = None
     if dynamic_axes:
         dynamic = {
-            "input":  {0: "batch_size"},
+            "input": {0: "batch_size"},
             "output": {0: "batch_size"},
         }
 
@@ -242,12 +248,12 @@ def export_onnx(
             model,
             dummy_in,
             str(out_path),
-            opset_version      = opset_version,
-            input_names        = ["input"],
-            output_names       = ["output"],
-            dynamic_axes       = dynamic,
-            do_constant_folding= True,
-            export_params      = True,
+            opset_version=opset_version,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_axes=dynamic,
+            do_constant_folding=True,
+            export_params=True,
         )
 
     # Verificar modelo ONNX
@@ -258,9 +264,10 @@ def export_onnx(
     # Validar numérica
     try:
         import onnxruntime as ort
+
         sess = ort.InferenceSession(str(out_path), providers=["CPUExecutionProvider"])
-        inp  = {sess.get_inputs()[0].name: dummy_in.numpy()}
-        out_onnx  = sess.run(None, inp)[0]
+        inp = {sess.get_inputs()[0].name: dummy_in.numpy()}
+        out_onnx = sess.run(None, inp)[0]
         out_torch = model(dummy_in).detach().numpy()
         diff = np.abs(out_onnx - out_torch).max()
         if diff > 1e-4:
@@ -279,11 +286,12 @@ def export_onnx(
 # CUANTIZACIÓN INT8
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def quantize_onnx_int8(
-    onnx_path:        Path,
-    output_dir:       Path,
-    calibration_data: Optional[str] = None,
-    filename:         str = "model_int8.onnx",
+    onnx_path: Path,
+    output_dir: Path,
+    calibration_data: str | None = None,
+    filename: str = "model_int8.onnx",
 ) -> Path:
     """
     Cuantización post-training a INT8 sobre el modelo ONNX.
@@ -296,10 +304,10 @@ def quantize_onnx_int8(
     """
     try:
         from onnxruntime.quantization import (
-            quantize_dynamic,
-            quantize_static,
             CalibrationDataReader,
             QuantType,
+            quantize_dynamic,
+            quantize_static,
         )
     except ImportError:
         raise RuntimeError("pip install onnxruntime")
@@ -313,8 +321,8 @@ def quantize_onnx_int8(
         class _CalibReader(CalibrationDataReader):
             def __init__(self, data_dir: str, n_samples: int = 100):
                 self.data_dir = Path(data_dir)
-                self.files    = list(self.data_dir.glob("**/*.npy"))[:n_samples]
-                self._idx     = 0
+                self.files = list(self.data_dir.glob("**/*.npy"))[:n_samples]
+                self._idx = 0
 
             def get_next(self):
                 if self._idx >= len(self.files):
@@ -346,10 +354,13 @@ def quantize_onnx_int8(
 
     size_orig = onnx_path.stat().st_size / 1e6
     size_int8 = out_path.stat().st_size / 1e6
-    ratio     = (1 - size_int8 / size_orig) * 100
+    ratio = (1 - size_int8 / size_orig) * 100
     logger.info(
         "INT8 guardado: %s (%.2f MB → %.2f MB, reducción %.1f%%)",
-        out_path, size_orig, size_int8, ratio,
+        out_path,
+        size_orig,
+        size_int8,
+        ratio,
     )
     return out_path
 
@@ -358,12 +369,13 @@ def quantize_onnx_int8(
 # BENCHMARKING
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def benchmark_pytorch(
-    model:    nn.Module,
+    model: nn.Module,
     dummy_in: torch.Tensor,
-    n_runs:   int = 100,
-    warmup:   int = 10,
-) -> Dict:
+    n_runs: int = 100,
+    warmup: int = 10,
+) -> dict:
     model.eval()
     with torch.no_grad():
         for _ in range(warmup):
@@ -375,21 +387,21 @@ def benchmark_pytorch(
             times.append(time.perf_counter() - t0)
     times = np.array(times) * 1000  # ms
     return {
-        "format":     "PyTorch (FP32)",
-        "mean_ms":    float(np.mean(times)),
-        "std_ms":     float(np.std(times)),
-        "p50_ms":     float(np.percentile(times, 50)),
-        "p95_ms":     float(np.percentile(times, 95)),
+        "format": "PyTorch (FP32)",
+        "mean_ms": float(np.mean(times)),
+        "std_ms": float(np.std(times)),
+        "p50_ms": float(np.percentile(times, 50)),
+        "p95_ms": float(np.percentile(times, 95)),
         "throughput": float(1000 / np.mean(times)),  # infer/s
     }
 
 
 def benchmark_torchscript(
-    ts_path:  Path,
+    ts_path: Path,
     dummy_in: torch.Tensor,
-    n_runs:   int = 100,
-    warmup:   int = 10,
-) -> Dict:
+    n_runs: int = 100,
+    warmup: int = 10,
+) -> dict:
     model = torch.jit.load(str(ts_path))
     model.eval()
     with torch.no_grad():
@@ -402,28 +414,28 @@ def benchmark_torchscript(
             times.append(time.perf_counter() - t0)
     times = np.array(times) * 1000
     return {
-        "format":     "TorchScript (FP32)",
-        "mean_ms":    float(np.mean(times)),
-        "std_ms":     float(np.std(times)),
-        "p50_ms":     float(np.percentile(times, 50)),
-        "p95_ms":     float(np.percentile(times, 95)),
+        "format": "TorchScript (FP32)",
+        "mean_ms": float(np.mean(times)),
+        "std_ms": float(np.std(times)),
+        "p50_ms": float(np.percentile(times, 50)),
+        "p95_ms": float(np.percentile(times, 95)),
         "throughput": float(1000 / np.mean(times)),
     }
 
 
 def benchmark_onnx(
     onnx_path: Path,
-    dummy_in:  torch.Tensor,
-    n_runs:    int = 100,
-    warmup:    int = 10,
-) -> Dict:
+    dummy_in: torch.Tensor,
+    n_runs: int = 100,
+    warmup: int = 10,
+) -> dict:
     try:
         import onnxruntime as ort
     except ImportError:
         return {"format": str(onnx_path.name), "error": "onnxruntime no instalado"}
 
-    sess    = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    inp_np  = dummy_in.numpy()
+    sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    inp_np = dummy_in.numpy()
     inp_key = sess.get_inputs()[0].name
 
     for _ in range(warmup):
@@ -436,16 +448,16 @@ def benchmark_onnx(
     times = np.array(times) * 1000
     label = "ONNX FP32" if "int8" not in onnx_path.name else "ONNX INT8"
     return {
-        "format":     label,
-        "mean_ms":    float(np.mean(times)),
-        "std_ms":     float(np.std(times)),
-        "p50_ms":     float(np.percentile(times, 50)),
-        "p95_ms":     float(np.percentile(times, 95)),
+        "format": label,
+        "mean_ms": float(np.mean(times)),
+        "std_ms": float(np.std(times)),
+        "p50_ms": float(np.percentile(times, 50)),
+        "p95_ms": float(np.percentile(times, 95)),
         "throughput": float(1000 / np.mean(times)),
     }
 
 
-def print_benchmark_table(results: List[Dict]) -> None:
+def print_benchmark_table(results: list[dict]) -> None:
     """Imprime tabla comparativa de latencia."""
     SEP = "─" * 72
     FMT = "  {:<22} {:>10} {:>10} {:>10} {:>10} {:>10}"
@@ -458,14 +470,16 @@ def print_benchmark_table(results: List[Dict]) -> None:
         if "error" in r:
             print(f"  {r['format']:<22}  ERROR: {r['error']}")
             continue
-        print(FMT.format(
-            r["format"],
-            f"{r['mean_ms']:.2f}",
-            f"{r['std_ms']:.2f}",
-            f"{r['p50_ms']:.2f}",
-            f"{r['p95_ms']:.2f}",
-            f"{r['throughput']:.1f}",
-        ))
+        print(
+            FMT.format(
+                r["format"],
+                f"{r['mean_ms']:.2f}",
+                f"{r['std_ms']:.2f}",
+                f"{r['p50_ms']:.2f}",
+                f"{r['p95_ms']:.2f}",
+                f"{r['throughput']:.1f}",
+            )
+        )
     print(SEP + "\n")
 
 
@@ -473,34 +487,39 @@ def print_benchmark_table(results: List[Dict]) -> None:
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-8s — %(message)s",
     )
 
-    parser = argparse.ArgumentParser(
-        description="Exportar modelo bioacústico a ONNX / TorchScript"
+    parser = argparse.ArgumentParser(description="Exportar modelo bioacústico a ONNX / TorchScript")
+    parser.add_argument("--checkpoint", required=True)
+    parser.add_argument(
+        "--model-type", required=True, choices=["cnn_baseline", "efficientnet", "panns"]
     )
-    parser.add_argument("--checkpoint",       required=True)
-    parser.add_argument("--model-type",       required=True,
-                        choices=["cnn_baseline", "efficientnet", "panns"])
-    parser.add_argument("--n-classes",        type=int, required=True)
-    parser.add_argument("--backbone",         default="efficientnet_b0")
-    parser.add_argument("--output-dir",       default="models/exported")
-    parser.add_argument("--device",           default="cpu")
-    parser.add_argument("--n-mels",           type=int, default=128)
-    parser.add_argument("--n-frames",         type=int, default=256)
-    parser.add_argument("--opset",            type=int, default=17)
-    parser.add_argument("--formats",          nargs="+",
-                        default=["torchscript", "onnx"],
-                        choices=["torchscript", "onnx", "onnx_int8"])
-    parser.add_argument("--calibration-data", default=None,
-                        help="Directorio .npy para cuantización INT8 estática")
-    parser.add_argument("--benchmark",        action="store_true")
+    parser.add_argument("--n-classes", type=int, required=True)
+    parser.add_argument("--backbone", default="efficientnet_b0")
+    parser.add_argument("--output-dir", default="models/exported")
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--n-mels", type=int, default=128)
+    parser.add_argument("--n-frames", type=int, default=256)
+    parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument(
+        "--formats",
+        nargs="+",
+        default=["torchscript", "onnx"],
+        choices=["torchscript", "onnx", "onnx_int8"],
+    )
+    parser.add_argument(
+        "--calibration-data", default=None, help="Directorio .npy para cuantización INT8 estática"
+    )
+    parser.add_argument("--benchmark", action="store_true")
     parser.add_argument("--n-benchmark-runs", type=int, default=100)
-    parser.add_argument("--class-names",      default=None,
-                        help="JSON list o .txt con nombres de clase (para metadata)")
+    parser.add_argument(
+        "--class-names", default=None, help="JSON list o .txt con nombres de clase (para metadata)"
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -508,21 +527,22 @@ def main() -> None:
 
     # Cargar modelo
     model = load_model(
-        args.checkpoint, args.model_type, args.n_classes,
-        backbone=args.backbone, device=args.device,
+        args.checkpoint,
+        args.model_type,
+        args.n_classes,
+        backbone=args.backbone,
+        device=args.device,
     )
 
     dummy = _dummy_input(args.model_type, args.n_mels, args.n_frames, args.device)
-    benchmark_results: List[Dict] = []
+    benchmark_results: list[dict] = []
 
     # Benchmark PyTorch base
     if args.benchmark:
         logger.info("Benchmarking PyTorch ...")
-        benchmark_results.append(
-            benchmark_pytorch(model, dummy, n_runs=args.n_benchmark_runs)
-        )
+        benchmark_results.append(benchmark_pytorch(model, dummy, n_runs=args.n_benchmark_runs))
 
-    exported_paths: Dict[str, Path] = {}
+    exported_paths: dict[str, Path] = {}
 
     # TorchScript
     if "torchscript" in args.formats:
@@ -537,26 +557,27 @@ def main() -> None:
     onnx_path = None
     if "onnx" in args.formats or "onnx_int8" in args.formats:
         onnx_path = export_onnx(
-            model, dummy, out_dir, "model.onnx",
-            opset_version=args.opset, dynamic_axes=True,
+            model,
+            dummy,
+            out_dir,
+            "model.onnx",
+            opset_version=args.opset,
+            dynamic_axes=True,
         )
         exported_paths["onnx"] = onnx_path
         if args.benchmark:
-            benchmark_results.append(
-                benchmark_onnx(onnx_path, dummy, n_runs=args.n_benchmark_runs)
-            )
+            benchmark_results.append(benchmark_onnx(onnx_path, dummy, n_runs=args.n_benchmark_runs))
 
     # ONNX INT8
     if "onnx_int8" in args.formats and onnx_path is not None:
         int8_path = quantize_onnx_int8(
-            onnx_path, out_dir,
+            onnx_path,
+            out_dir,
             calibration_data=args.calibration_data,
         )
         exported_paths["onnx_int8"] = int8_path
         if args.benchmark:
-            benchmark_results.append(
-                benchmark_onnx(int8_path, dummy, n_runs=args.n_benchmark_runs)
-            )
+            benchmark_results.append(benchmark_onnx(int8_path, dummy, n_runs=args.n_benchmark_runs))
 
     # Tabla de benchmark
     if args.benchmark and benchmark_results:
@@ -564,15 +585,15 @@ def main() -> None:
 
     # Guardar metadata de exportación
     meta = {
-        "model_type":   args.model_type,
-        "backbone":     args.backbone,
-        "n_classes":    args.n_classes,
-        "n_mels":       args.n_mels,
-        "n_frames":     args.n_frames,
-        "checkpoint":   args.checkpoint,
-        "exported":     {k: str(v) for k, v in exported_paths.items()},
-        "benchmark":    benchmark_results,
-        "input_shape":  list(dummy.shape),
+        "model_type": args.model_type,
+        "backbone": args.backbone,
+        "n_classes": args.n_classes,
+        "n_mels": args.n_mels,
+        "n_frames": args.n_frames,
+        "checkpoint": args.checkpoint,
+        "exported": {k: str(v) for k, v in exported_paths.items()},
+        "benchmark": benchmark_results,
+        "input_shape": list(dummy.shape),
     }
     if args.class_names:
         try:
