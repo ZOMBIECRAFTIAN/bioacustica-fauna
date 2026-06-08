@@ -1104,9 +1104,111 @@ def get_mexico_bird_targets() -> list[TaxonTarget]:
     ]
 
 
+def get_mexico_anuran_targets() -> list[TaxonTarget]:
+    """
+    Perfil piloto para anfibios anuros de México.
+
+    Criterios:
+      - Especies vocales o con registros acústicos esperables.
+      - Relevancia para monitoreo nocturno y ambientes tropicales/secos.
+      - Uso como grupo principal de la tesis de maestría.
+    """
+    sources = ["xeno-canto", "inaturalist", "gbif"]
+    return [
+        TaxonTarget("smilisca_baudinii", "Smilisca baudinii", "frogs", sources=sources),
+        TaxonTarget("rhinella_horribilis", "Rhinella horribilis", "frogs", sources=sources),
+        TaxonTarget("incilius_valliceps", "Incilius valliceps", "frogs", sources=sources),
+        TaxonTarget("lithobates_berlandieri", "Lithobates berlandieri", "frogs", sources=sources),
+        TaxonTarget("lithobates_forreri", "Lithobates forreri", "frogs", sources=sources),
+        TaxonTarget(
+            "eleutherodactylus_cystignathoides",
+            "Eleutherodactylus cystignathoides",
+            "frogs",
+            sources=sources,
+        ),
+        TaxonTarget("exerodonta_smaragdinus", "Exerodonta smaragdinus", "frogs", sources=sources),
+        TaxonTarget("craugastor_augusti", "Craugastor augusti", "frogs", sources=sources),
+    ]
+
+
+def get_mexico_bat_targets() -> list[TaxonTarget]:
+    """
+    Perfil piloto para murciélagos presentes en México.
+
+    Nota metodológica:
+      Las grabaciones útiles de murciélagos requieren tasas de muestreo altas.
+      Este perfil sirve para descubrimiento inicial; la curación final debe validar
+      sample rate, equipo de grabación y tipo de llamada.
+    """
+    sources = ["inaturalist", "gbif"]
+    return [
+        TaxonTarget("tadarida_brasiliensis", "Tadarida brasiliensis", "bats", sources=sources),
+        TaxonTarget("myotis_velifer", "Myotis velifer", "bats", sources=sources),
+        TaxonTarget("eptesicus_fuscus", "Eptesicus fuscus", "bats", sources=sources),
+        TaxonTarget("nyctinomops_macrotis", "Nyctinomops macrotis", "bats", sources=sources),
+        TaxonTarget("lasiurus_cinereus", "Lasiurus cinereus", "bats", sources=sources),
+        TaxonTarget("balantiopteryx_plicata", "Balantiopteryx plicata", "bats", sources=sources),
+    ]
+
+
+def get_mexico_insect_targets() -> list[TaxonTarget]:
+    """
+    Perfil exploratorio para insectos acústicamente detectables.
+
+    Se considera extensión opcional para maestría si la disponibilidad de audio
+    y la separación acústica son suficientes.
+    """
+    sources = ["xeno-canto", "inaturalist", "gbif"]
+    return [
+        TaxonTarget("gryllus_assimilis", "Gryllus assimilis", "insects", sources=sources),
+        TaxonTarget("neoconocephalus_triops", "Neoconocephalus triops", "insects", sources=sources),
+        TaxonTarget("oecanthus_niveus", "Oecanthus niveus", "insects", sources=sources),
+        TaxonTarget("cicada_orni", "Cicada orni", "insects", sources=sources),
+        TaxonTarget("tettigonia_viridissima", "Tettigonia viridissima", "insects", sources=sources),
+    ]
+
+
+def get_mexico_vocal_mammal_targets() -> list[TaxonTarget]:
+    """
+    Perfil exploratorio para mamíferos vocales.
+
+    No todos los mamíferos son buenos candidatos acústicos; este perfil prioriza
+    especies con vocalizaciones audibles y utilidad ecológica.
+    """
+    sources = ["xeno-canto", "inaturalist", "gbif"]
+    return [
+        TaxonTarget("alouatta_palliata", "Alouatta palliata", "mammals", sources=sources),
+        TaxonTarget("canis_latrans", "Canis latrans", "mammals", sources=sources),
+        TaxonTarget("procyon_lotor", "Procyon lotor", "mammals", sources=sources),
+        TaxonTarget("nasua_narica", "Nasua narica", "mammals", sources=sources),
+        TaxonTarget("odocoileus_virginianus", "Odocoileus virginianus", "mammals", sources=sources),
+    ]
+
+
+def get_mexico_multitaxon_targets() -> list[TaxonTarget]:
+    """
+    Perfil piloto multitaxonómico para la tesis de maestría.
+
+    Mantiene el alcance defendible: anuros y murciélagos como grupos centrales,
+    aves como grupo comparativo, e insectos/mamíferos como extensión inicial.
+    """
+    return (
+        get_mexico_anuran_targets()[:6]
+        + get_mexico_bat_targets()[:4]
+        + get_mexico_bird_targets()[:6]
+        + get_mexico_insect_targets()[:3]
+        + get_mexico_vocal_mammal_targets()[:3]
+    )
+
+
 TARGET_PROFILES = {
     "default": get_default_targets,
+    "mexico_anurans": get_mexico_anuran_targets,
+    "mexico_bats": get_mexico_bat_targets,
     "mexico_birds": get_mexico_bird_targets,
+    "mexico_insects": get_mexico_insect_targets,
+    "mexico_mammals": get_mexico_vocal_mammal_targets,
+    "mexico_multitaxon": get_mexico_multitaxon_targets,
 }
 
 
@@ -1185,14 +1287,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     country = args.country
-    if country is None and args.profile == "mexico_birds":
+    if country is None and args.profile.startswith("mexico_"):
         country = MEXICO_COUNTRY
     inat_place_id = args.inat_place_id
-    if inat_place_id is None and args.profile == "mexico_birds":
+    if inat_place_id is None and args.profile.startswith("mexico_"):
         inat_place_id = MEXICO_INAT_PLACE_ID
     max_duration = args.max_duration
     if max_duration is None:
-        max_duration = 180.0 if args.profile == "mexico_birds" else 60.0
+        max_duration = 180.0 if args.profile in {"mexico_birds", "mexico_multitaxon"} else 60.0
 
     cfg = DownloadConfig(
         output_dir=args.output,

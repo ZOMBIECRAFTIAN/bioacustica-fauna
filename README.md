@@ -40,6 +40,23 @@ Design and implement an automated system for species identification from passive
 4. Deploy a REST API for real-time inference with structured PostgreSQL storage.
 5. Export and benchmark models (ONNX, TorchScript, INT8) for edge deployment.
 
+## Master's Thesis Focus
+
+This repository is being developed as the technical foundation for a master's thesis:
+
+> **Sistema multitaxonómico para detección e identificación de fauna silvestre mediante monitoreo acústico pasivo, con preprocesamiento adaptativo por grupo animal y evaluación en condiciones reales de campo.**
+
+The thesis focus is not to compete with specialized bird identification systems. Instead, it targets a broader and more research-oriented problem: **multitaxonomic bioacoustic monitoring** for acoustically detectable wildlife groups with different signal characteristics, including anurans, bats, birds, insects, and vocal mammals.
+
+The first defendable master's scope is a pilot system with:
+
+- **Anurans** as the main ecological group.
+- **Bats** as the technically distinct ultrasonic group.
+- **Birds** as a comparative baseline.
+- **Insects and vocal mammals** as optional extensions depending on dataset availability.
+
+See [`docs/tesis_maestria.md`](docs/tesis_maestria.md), [`docs/tesis_indice.md`](docs/tesis_indice.md), and [`docs/metodologia/protocolo_dataset_multitaxon.md`](docs/metodologia/protocolo_dataset_multitaxon.md).
+
 ---
 
 ## Research Relevance for Bioacoustics
@@ -227,6 +244,9 @@ pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 \
 # 4. Project dependencies
 pip install -r requirements.txt
 
+# If Conda/pip upgraded NumPy to 2.x, force the compatible line for PyTorch 2.2.x:
+pip install "numpy>=1.26,<2"
+
 # 5. Environment variables
 cp .env.example .env
 ```
@@ -302,6 +322,18 @@ python -m src.data.dataset_builder \
     --output data/raw \
     --max-per-class 300
 
+# Master's thesis multitaxon pilot
+python -m src.data.dataset_builder \
+    --profile mexico_multitaxon \
+    --output data/raw/multitaxon \
+    --max-per-class 150
+
+# Individual group profiles
+python -m src.data.dataset_builder --profile mexico_anurans --output data/raw/anurans
+python -m src.data.dataset_builder --profile mexico_bats --output data/raw/bats
+python -m src.data.dataset_builder --profile mexico_insects --output data/raw/insects
+python -m src.data.dataset_builder --profile mexico_mammals --output data/raw/mammals
+
 # Extract mel spectrogram features
 python -m src.feature_extraction.batch_extractor \
     --input data/raw \
@@ -316,6 +348,10 @@ python -m src.feature_extraction.batch_extractor \
 # Recommended: EfficientNet with YAML config
 python -m src.models.train \
     --config configs/train_mexico_birds.yaml
+
+# Master's thesis multitaxon pilot
+python -m src.models.train \
+    --config configs/train_multitaxon.yaml
 
 # Override from CLI
 python -m src.models.train \

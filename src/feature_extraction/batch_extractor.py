@@ -119,6 +119,15 @@ PRESET_OVERRIDES: dict[str, dict] = {
         "n_mels": 128,
         "fmin": 50,
     },
+    "multitaxon": {
+        "sample_rate": 44_100,
+        "n_mels": 128,
+        "fmin": 50,
+        "fmax": None,
+        "segment_duration": 3.0,
+        "hop_duration": 1.5,
+        "max_duration_s": 180.0,
+    },
     "birds": {
         "sample_rate": 44_100,
         "n_mels": 128,
