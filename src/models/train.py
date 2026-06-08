@@ -637,9 +637,10 @@ if __name__ == "__main__":
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
         effective_cfg_path = f.name
 
-    main(config_path=effective_cfg_path)
-
     try:
-        os.unlink(effective_cfg_path)
-    except Exception:
-        pass
+        main(config_path=effective_cfg_path)
+    finally:
+        try:
+            os.unlink(effective_cfg_path)
+        except Exception:
+            pass
