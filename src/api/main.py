@@ -1477,12 +1477,12 @@ async def get_detection(detection_id: str):
 
 @app.get("/species", response_model=list[SpeciesOut], tags=["Taxonomy"])
 async def list_species(
-    acoustic_group: str
-    | None = Query(
+    acoustic_group: str | None = Query(
         None, description="Filtrar por grupo: mammal_bat, amphibian_anura, insect_orthoptera, etc."
     ),
-    iucn_status: str
-    | None = Query(None, description="Filtrar por estado IUCN: LC, NT, VU, EN, CR"),
+    iucn_status: str | None = Query(
+        None, description="Filtrar por estado IUCN: LC, NT, VU, EN, CR"
+    ),
     search: str | None = Query(None, description="Búsqueda por nombre científico o común"),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),

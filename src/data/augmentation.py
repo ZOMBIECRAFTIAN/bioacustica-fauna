@@ -105,8 +105,7 @@ class AudioTransform(ABC):
         return y
 
     @abstractmethod
-    def apply(self, y: np.ndarray, sr: int) -> np.ndarray:
-        ...
+    def apply(self, y: np.ndarray, sr: int) -> np.ndarray: ...
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(p={self.p})"
@@ -341,8 +340,7 @@ class SpectrogramTransform(ABC):
         return spec
 
     @abstractmethod
-    def apply(self, spec: np.ndarray) -> np.ndarray:
-        ...
+    def apply(self, spec: np.ndarray) -> np.ndarray: ...
 
 
 class SpecAugmentFreq(SpectrogramTransform):
