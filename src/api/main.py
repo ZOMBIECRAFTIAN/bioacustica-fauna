@@ -23,7 +23,7 @@ Ejecución:
     uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 Autor: Ian
-Versión: 1.0.0
+Versión: 0.3.0
 ─────────────────────────────────────────────────────────────────────────────
 """
 
@@ -83,7 +83,7 @@ def _database_url_from_env() -> str:
 
 class Settings:
     APP_NAME = "Bioacustica Fauna API"
-    VERSION = "1.0.0"
+    VERSION = "0.3.0"
     MODEL_PATH = (
         os.getenv("MODEL_PATH")
         or os.getenv("MODEL_CHECKPOINT_PATH")

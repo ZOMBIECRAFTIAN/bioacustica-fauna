@@ -11,7 +11,7 @@
 
 ## Abstract
 
-This project implements an end-to-end **Passive Acoustic Monitoring (PAM)** pipeline for automatic biodiversity assessment from field recordings. It classifies wildlife acoustic signals using deep learning on log-mel spectrograms, targeting multiple taxonomic groups: Chiroptera (bats), Anura (frogs), Orthoptera/Cicadidae (insects), terrestrial mammals, and reptiles. The system integrates taxon-adaptive bioacoustic preprocessing, three deep learning architectures (custom residual CNN, EfficientNet-B0/B4, PANNs-CNN14), a REST API for real-time inference, PostgreSQL for structured biodiversity data storage, and ONNX/TorchScript export for edge deployment on low-power field devices.
+This project implements an end-to-end **Passive Acoustic Monitoring (PAM)** pipeline for automatic biodiversity assessment from field recordings. It classifies wildlife acoustic signals using deep learning on log-mel spectrograms, targeting multiple taxonomic groups: Chiroptera (bats), Anura (frogs), Aves (birds), Orthoptera/Cicadidae (insects), terrestrial mammals, and reptiles. The system integrates taxon-adaptive bioacoustic preprocessing, three deep learning architectures (custom residual CNN, EfficientNet-B0/B4, PANNs-CNN14), a REST API for real-time inference, PostgreSQL/PostGIS for structured biodiversity data storage, and ONNX/TorchScript export for edge deployment on low-power field devices.
 
 ---
 
@@ -71,7 +71,7 @@ PAM is a non-invasive, continuous monitoring methodology with growing adoption i
 
 **Transfer learning:** PANNs-CNN14, pretrained on AudioSet (526 classes, ~5,800 hours), provides strong general acoustic representations transferable to wildlife sounds — directly addressing the small-dataset problem endemic to field bioacoustics.
 
-**Multi-group coverage:** Bats, frogs, insects, mammals, and reptiles — enabling soundscape-level biodiversity indices (Acoustic Complexity Index, Bioacoustic Index, Species Richness from audio) as complementary metrics.
+**Multi-group coverage:** Bats, frogs, birds, insects, mammals, and reptiles — enabling soundscape-level biodiversity indices (Acoustic Complexity Index, Bioacoustic Index, Species Richness from audio) as complementary metrics.
 
 **Edge deployment:** ONNX INT8 quantization (~75% size reduction) enables deployment on Raspberry Pi 4 or Jetson Nano attached directly to field recorders, removing the need for network connectivity in remote monitoring stations.
 
@@ -167,6 +167,7 @@ Data augmentation (SpecAugment frequency/time masking, pitch shift ±2 semitones
 |---|---|---|---|
 | Chiroptera | 20 – 200 kHz | 192,000 Hz | Echolocation — requires specialized recorder |
 | Anura | 100 – 8,000 Hz | 22,050 Hz | Advertisement calls |
+| Aves | 200 – 12,000 Hz | 44,100 Hz | Bird songs and calls; comparative baseline |
 | Orthoptera / Cicadidae | 200 – 100,000 Hz | 44,100 Hz | Stridulation |
 | Mammalia (vocal) | 20 – 20,000 Hz | 44,100 Hz | Vocalizations, contact calls |
 | Reptilia | 100 – 5,000 Hz | 22,050 Hz | Crocodilians, geckos |
@@ -199,8 +200,8 @@ Data augmentation (SpecAugment frequency/time masking, pitch shift ±2 semitones
 ├── demo_inference.py                       # Minimal demo: WAV → top-5 predictions
 ├── notebooks/01_eda.ipynb
 ├── tests/
-│   ├── test_preprocessor.py               # 35 unit tests
-│   └── test_models.py                     # 50 model tests
+│   ├── test_preprocessor.py               # preprocessing tests
+│   └── test_models.py                     # model architecture tests
 ├── results/
 │   ├── README.md                          # Results documentation
 │   ├── metrics_template.csv               # Metrics recording template
@@ -284,7 +285,7 @@ python demo_inference.py \
     --model efficientnet \
     --preset mammals
 
-# Available presets: bats | frogs | insects | mammals | reptiles
+# Available presets: bats | frogs | insects | mammals | birds | reptiles
 ```
 
 **Expected output:**
@@ -428,8 +429,8 @@ Interactive docs: `http://localhost:8000/docs`
 ## Tests
 
 ```bash
-pytest tests/test_preprocessor.py -v          # 35 unit tests
-pytest tests/test_models.py -v                # 50 model tests
+pytest tests/test_preprocessor.py -v          # preprocessing tests
+pytest tests/test_models.py -v                # model architecture tests
 pytest tests/ --cov=src --cov-report=term-missing  # full suite + coverage
 ```
 
@@ -440,13 +441,13 @@ pytest tests/ --cov=src --cov-report=term-missing  # full suite + coverage
 > Honest assessment — no metrics are claimed until experimental validation is complete.
 
 **Complete and functional:**
-- ✅ Bioacoustic preprocessing with taxon-specific presets (bats, frogs, insects, mammals, reptiles)
+- ✅ Bioacoustic preprocessing with taxon-specific presets (bats, frogs, birds, insects, mammals, reptiles)
 - ✅ Three DL architectures implemented and trainable (BioAcousticCNN, EfficientNet, PANNs-CNN14)
 - ✅ Progressive fine-tuning trainer with SpecAugment and MixUp
 - ✅ FastAPI REST API with async PostgreSQL backend
 - ✅ ONNX / TorchScript export pipeline with INT8 quantization
 - ✅ Real-time acoustic monitor with VAD + sliding-window inference
-- ✅ 85 unit tests (pytest) covering preprocessing and model forward passes
+- ✅ Pytest suite covering preprocessing, models, API, data, and training utilities
 - ✅ CI/CD pipeline (GitHub Actions: ruff/black lint, pytest, bandit, schema validation, Docker build)
 
 **In progress — not yet validated:**
@@ -507,7 +508,7 @@ Results will be published in `results/` as experiments are completed.
 >
 > The system is deployed as a FastAPI REST API with async PostgreSQL storage, a real-time acoustic monitor, and an export pipeline to ONNX INT8 — which reduces model size by ~75% and targets deployment on Raspberry Pi 4 attached directly to the recorder.
 >
-> The honest status: the engineering pipeline is complete and tested with 85 unit tests and a full CI/CD pipeline. What's missing is the validated dataset and comparative evaluation — which is exactly what I would pursue in a graduate research program. I deliberately don't report any accuracy numbers until I have a properly curated, geographically representative dataset. That's the scientifically defensible position, and building that dataset with rigorous protocols would be my first research priority."
+> The honest status: the engineering pipeline is complete and covered by a pytest suite plus a full CI/CD pipeline. What's missing is the validated dataset and comparative evaluation — which is exactly what I would pursue in a graduate research program. I deliberately don't report any accuracy numbers until I have a properly curated, geographically representative dataset. That's the scientifically defensible position, and building that dataset with rigorous protocols would be my first research priority."
 
 ---
 

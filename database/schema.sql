@@ -7,7 +7,7 @@
 
 -- Habilitar extensiones necesarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";    -- UUIDs
-CREATE EXTENSION IF NOT EXISTS "postgis";      -- Coordenadas GPS (opcional)
+CREATE EXTENSION IF NOT EXISTS "postgis";      -- Coordenadas GPS
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";      -- Búsqueda por similitud de texto
 
 -- ─────────────────────────────────────────────────────────────────────────────

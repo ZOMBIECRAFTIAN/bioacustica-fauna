@@ -18,18 +18,18 @@ python demo_inference.py \\
     --model     efficientnet \\
     --preset    mammals
 
-Available presets: bats | frogs | insects | mammals | reptiles
+Available presets: bats | frogs | insects | mammals | birds | reptiles
 Available models:  cnn | efficientnet | panns
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import sys
 import time
 import warnings
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import torch
@@ -38,10 +38,10 @@ import torch.nn.functional as F
 # ── Try importing audio backend ───────────────────────────────────────────────
 try:
     import librosa
-    import soundfile as sf
-    AUDIO_AVAILABLE = True
 except ImportError:
     AUDIO_AVAILABLE = False
+else:
+    AUDIO_AVAILABLE = importlib.util.find_spec("soundfile") is not None
 
 # ── Taxon-specific preprocessing presets ─────────────────────────────────────
 PRESETS: dict[str, dict] = {
@@ -52,7 +52,7 @@ PRESETS: dict[str, dict] = {
         "n_mels": 128,
         "fft_size": 1024,
         "hop_length": 256,
-        "segment_duration": 0.5,   # bats: short echolocation pulses
+        "segment_duration": 0.5,  # bats: short echolocation pulses
         "description": "Ultrasonic — echolocation pulses 10–96 kHz (requires 192 kHz recorder)",
     },
     "frogs": {
@@ -84,6 +84,16 @@ PRESETS: dict[str, dict] = {
         "hop_length": 512,
         "segment_duration": 3.0,
         "description": "Vocalizations / contact calls — 20 Hz – 20 kHz",
+    },
+    "birds": {
+        "sample_rate": 44_100,
+        "freq_min": 200,
+        "freq_max": 12_000,
+        "n_mels": 128,
+        "fft_size": 2048,
+        "hop_length": 512,
+        "segment_duration": 3.0,
+        "description": "Bird songs and calls — 200 Hz – 12 kHz",
     },
     "reptiles": {
         "sample_rate": 22_050,
@@ -130,8 +140,12 @@ class _BioAcousticCNN(torch.nn.Module):
     def __init__(self, n_classes: int):
         super().__init__()
         self.features = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 32, 3, padding=1), torch.nn.BatchNorm2d(32), torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 64, 3, padding=1), torch.nn.BatchNorm2d(64), torch.nn.ReLU(),
+            torch.nn.Conv2d(1, 32, 3, padding=1),
+            torch.nn.BatchNorm2d(32),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(32, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
             torch.nn.AdaptiveAvgPool2d((8, 8)),
             torch.nn.Flatten(),
         )
@@ -151,6 +165,7 @@ class _EfficientNetBioAcoustic(torch.nn.Module):
         super().__init__()
         try:
             import timm
+
             self.backbone = timm.create_model(
                 "efficientnet_b0",
                 pretrained=False,
@@ -158,7 +173,7 @@ class _EfficientNetBioAcoustic(torch.nn.Module):
                 num_classes=n_classes,
             )
         except ImportError:
-            warnings.warn("timm not installed — falling back to CNN stub")
+            warnings.warn("timm not installed — falling back to CNN stub", stacklevel=2)
             self.backbone = _BioAcousticCNN(n_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -175,8 +190,12 @@ class _PANNSCNN14BioAcoustic(torch.nn.Module):
     def __init__(self, n_classes: int):
         super().__init__()
         self.features = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 64, 3, padding=1), torch.nn.BatchNorm2d(64), torch.nn.ReLU(),
-            torch.nn.Conv2d(64, 128, 3, padding=1), torch.nn.BatchNorm2d(128), torch.nn.ReLU(),
+            torch.nn.Conv2d(1, 64, 3, padding=1),
+            torch.nn.BatchNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(64, 128, 3, padding=1),
+            torch.nn.BatchNorm2d(128),
+            torch.nn.ReLU(),
             torch.nn.AdaptiveAvgPool2d((4, 4)),
             torch.nn.Flatten(),
         )
@@ -242,7 +261,7 @@ def to_mel_spectrogram(
     mel_db = (mel_db - mel_db.min()) / (mel_db.max() - mel_db.min() + 1e-8)
 
     # Resize to fixed target_size with bilinear interpolation
-    t = torch.tensor(mel_db).unsqueeze(0).unsqueeze(0)       # (1,1,H,W)
+    t = torch.tensor(mel_db).unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
     t = F.interpolate(t, size=target_size, mode="bilinear", align_corners=False)
     return t.squeeze(0).numpy()  # (1, H, W)
 
@@ -251,7 +270,7 @@ def to_mel_spectrogram(
 def build_model(
     model_name: str,
     n_classes: int,
-    checkpoint: Optional[Path],
+    checkpoint: Path | None,
     device: torch.device,
 ) -> torch.nn.Module:
     cls = MODEL_REGISTRY.get(model_name)
@@ -285,15 +304,15 @@ def run_inference(
     Run batch inference. Returns averaged softmax probabilities over all segments.
     Shape: (n_classes,)
     """
-    batch = torch.tensor(
-        np.stack(spectrograms, axis=0), dtype=torch.float32
-    ).to(device)  # (N, 1, H, W)
+    batch = torch.tensor(np.stack(spectrograms, axis=0), dtype=torch.float32).to(
+        device
+    )  # (N, 1, H, W)
 
     with torch.no_grad():
-        logits = model(batch)             # (N, n_classes)
+        logits = model(batch)  # (N, n_classes)
         probs = torch.softmax(logits, dim=1).cpu().numpy()
 
-    return probs.mean(axis=0)             # average across segments
+    return probs.mean(axis=0)  # average across segments
 
 
 # ── Result display ────────────────────────────────────────────────────────────
@@ -331,36 +350,43 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--audio", type=Path, required=True, help="Input WAV/FLAC file")
     parser.add_argument(
-        "--checkpoint", type=Path, default=None,
-        help="Path to .pt model checkpoint (optional — random weights if omitted)"
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help="Path to .pt model checkpoint (optional — random weights if omitted)",
     )
     parser.add_argument(
-        "--model", choices=list(MODEL_REGISTRY), default="efficientnet",
-        help="Model architecture (default: efficientnet)"
+        "--model",
+        choices=list(MODEL_REGISTRY),
+        default="efficientnet",
+        help="Model architecture (default: efficientnet)",
     )
     parser.add_argument(
-        "--preset", choices=list(PRESETS), default="mammals",
-        help="Taxon-specific preprocessing preset (default: mammals)"
+        "--preset",
+        choices=list(PRESETS),
+        default="mammals",
+        help="Taxon-specific preprocessing preset (default: mammals)",
     )
     parser.add_argument(
-        "--class-names", type=Path, default=None,
-        help="Path to a .txt file with one class name per line (optional)"
+        "--class-names",
+        type=Path,
+        default=None,
+        help="Path to a .txt file with one class name per line (optional)",
     )
     parser.add_argument(
-        "--n-classes", type=int, default=len(PLACEHOLDER_CLASSES),
-        help=f"Number of output classes (default: {len(PLACEHOLDER_CLASSES)})"
+        "--n-classes",
+        type=int,
+        default=len(PLACEHOLDER_CLASSES),
+        help=f"Number of output classes (default: {len(PLACEHOLDER_CLASSES)})",
     )
     parser.add_argument(
-        "--top-k", type=int, default=5,
-        help="Number of top predictions to show (default: 5)"
+        "--top-k", type=int, default=5, help="Number of top predictions to show (default: 5)"
     )
     parser.add_argument(
-        "--device", default="cpu",
-        help="Inference device: cpu | cuda | mps (default: cpu)"
+        "--device", default="cpu", help="Inference device: cpu | cuda | mps (default: cpu)"
     )
     parser.add_argument(
-        "--overlap", type=float, default=0.5,
-        help="Segment overlap fraction 0.0–0.9 (default: 0.5)"
+        "--overlap", type=float, default=0.5, help="Segment overlap fraction 0.0–0.9 (default: 0.5)"
     )
     return parser.parse_args()
 
@@ -382,7 +408,7 @@ def main() -> None:
         class_names = args.class_names.read_text().strip().splitlines()
         print(f"[INFO] Loaded {len(class_names)} class names from {args.class_names}")
     else:
-        class_names = PLACEHOLDER_CLASSES[:args.n_classes]
+        class_names = PLACEHOLDER_CLASSES[: args.n_classes]
         while len(class_names) < args.n_classes:
             class_names.append(f"class_{len(class_names)}")
         if not args.class_names:
@@ -396,7 +422,9 @@ def main() -> None:
 
     # ── Segment ───────────────────────────────────────────────────────────────
     segments = segment_waveform(waveform, sr, preset["segment_duration"], args.overlap)
-    print(f"[INFO] Segments: {len(segments)} × {preset['segment_duration']}s (overlap={args.overlap:.0%})")
+    print(
+        f"[INFO] Segments: {len(segments)} × {preset['segment_duration']}s (overlap={args.overlap:.0%})"
+    )
 
     # ── Mel spectrograms ──────────────────────────────────────────────────────
     print("[INFO] Extracting mel spectrograms...")
