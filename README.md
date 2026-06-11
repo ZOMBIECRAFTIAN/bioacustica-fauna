@@ -55,7 +55,7 @@ The first defendable master's scope is a pilot system with:
 - **Birds** as a comparative baseline.
 - **Insects and vocal mammals** as optional extensions depending on dataset availability.
 
-See [`docs/tesis_maestria.md`](docs/tesis_maestria.md), [`docs/tesis_indice.md`](docs/tesis_indice.md), and [`docs/metodologia/protocolo_dataset_multitaxon.md`](docs/metodologia/protocolo_dataset_multitaxon.md).
+See [`docs/tesis_maestria.md`](docs/tesis_maestria.md), [`docs/tesis_indice.md`](docs/tesis_indice.md), [`docs/metodologia/protocolo_dataset_multitaxon.md`](docs/metodologia/protocolo_dataset_multitaxon.md), [`docs/metodologia/diseno_experimental_maestria.md`](docs/metodologia/diseno_experimental_maestria.md), [`docs/metodologia/clases_negativas.md`](docs/metodologia/clases_negativas.md), and [`docs/metodologia/validacion_campo.md`](docs/metodologia/validacion_campo.md).
 
 ---
 
@@ -341,6 +341,18 @@ python -m src.feature_extraction.batch_extractor \
     --output data/spectrograms \
     --preset birds \
     --workers 4
+
+# Master's thesis adaptive multitaxon features + segment manifest
+python -m src.feature_extraction.batch_extractor \
+    --input data/raw/multitaxon \
+    --output data/spectrograms/multitaxon \
+    --mfcc-dir data/features/mfcc/multitaxon \
+    --preset adaptive \
+    --workers 4
+
+python -m src.data.manifest \
+    --raw-dir data/raw/multitaxon \
+    --spectrogram-dir data/spectrograms/multitaxon
 ```
 
 ### 2. Train
@@ -353,6 +365,10 @@ python -m src.models.train \
 # Master's thesis multitaxon pilot
 python -m src.models.train \
     --config configs/train_multitaxon.yaml
+
+# Hierarchical stage 1: acoustic group classifier
+python -m src.models.train \
+    --config configs/train_multitaxon_stage1_group.yaml
 
 # Override from CLI
 python -m src.models.train \

@@ -79,6 +79,8 @@ Para mantener una tesis defendible, se recomienda iniciar con tres grupos: anuro
 El aporte principal de la tesis será una arquitectura experimental y reproducible para clasificación bioacústica multitaxonómica. La contribución no se limita a un modelo, sino al diseño completo del flujo:
 
 - Curación de dataset multitaxonómico.
+- Manifiesto trazable por segmento, archivo original, licencia y fuente.
+- Split experimental agrupado para evitar fuga de segmentos entre entrenamiento y prueba.
 - Preprocesamiento adaptativo por grupo animal.
 - Comparación entre clasificación plana y jerárquica.
 - Evaluación por grupo taxonómico.
@@ -271,10 +273,10 @@ Nombre académico recomendado:
 
 ## Próximos pasos inmediatos
 
-1. Reescribir el README para que el enfoque principal sea multitaxonómico y no aves de México.
-2. Crear perfiles de dataset por grupo: anuros, murciélagos, aves, insectos y mamíferos vocales.
-3. Crear una configuración `train_multitaxon.yaml`.
-4. Añadir evaluación por grupo animal.
-5. Añadir clase `unknown` y clases de ruido ambiental.
-6. Separar el prototipo web de la API científica.
-7. Preparar una carpeta de resultados para experimentos de maestría.
+1. Cerrar `dataset_manifest.csv` con fuente, licencia, grupo animal y archivo original.
+2. Ejecutar el entrenamiento principal con split `source_file`.
+3. Entrenar la etapa 1 jerárquica con `configs/train_multitaxon_stage1_group.yaml`.
+4. Entrenar al menos un especialista de etapa 2 por grupo prioritario.
+5. Recolectar clases negativas reales: lluvia, viento, voz humana, tráfico y silencio.
+6. Ejecutar validación externa con el protocolo `docs/metodologia/validacion_campo.md`.
+7. Registrar resultados con las plantillas de `results/templates/maestria_multitaxon/`.

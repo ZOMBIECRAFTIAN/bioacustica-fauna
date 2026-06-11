@@ -1,0 +1,2 @@
+recording_id,site_id,date,recorder,microphone,habitat,weather,duration_s,dominant_noise,expected_species_or_group,prediction,confidence,correct,error_type,notes
+field_001,,,,,,,,,,,,,,

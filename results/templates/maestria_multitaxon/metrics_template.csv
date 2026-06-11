@@ -1,0 +1,2 @@
+experiment_id,commit,config_path,dataset_manifest,split_manifest,model_type,label_mode,split_strategy,n_classes,n_train,n_val,n_test,accuracy,balanced_accuracy,f1_macro,precision_macro,recall_macro,top1,top3,top5,unknown_rate,notes
+maestria_multitaxon_v1,,,,configs/train_multitaxon.yaml,class,source_file,,,,,,,,,,,,,

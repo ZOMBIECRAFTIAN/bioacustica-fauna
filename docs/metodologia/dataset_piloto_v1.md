@@ -31,7 +31,7 @@ python -m src.feature_extraction.batch_extractor \
     --input data/raw/multitaxon \
     --output data/spectrograms/multitaxon \
     --mfcc-dir data/features/mfcc/multitaxon \
-    --preset multitaxon \
+    --preset adaptive \
     --workers 1 \
     --overwrite
 ```
@@ -139,4 +139,4 @@ Esto produce un primer conjunto entrenable de **12 clases** distribuidas en tres
 4. Reemplazar especies con baja cobertura.
 5. Buscar fuentes especializadas para murciélagos antes de incluirlos en entrenamiento.
 6. Agregar clases negativas: lluvia, viento, voz humana, tráfico y silencio.
-7. Implementar split por archivo/fuente para evitar fuga de segmentos entre entrenamiento y prueba.
+7. Usar `dataset_manifest.csv` y split `source_file` para evitar fuga de segmentos entre entrenamiento y prueba.

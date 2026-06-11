@@ -47,10 +47,10 @@ CAPA 3: EXTRACCIÓN DE CARACTERÍSTICAS  [src/feature_extraction/]
                   ▼
 CAPA 4: CLASIFICACIÓN  [src/models/]
 ┌──────────────────────────────────────────┐
-│  Modelo A: CNN baseline (Mel input)      │  F1 objetivo: ≥ 0.75
-│  Modelo B: EfficientNet-B0 + TL         │  F1 objetivo: ≥ 0.82
-│  Modelo C: PANNs-CNN14 (fine-tune)      │  F1 objetivo: ≥ 0.85
-│  Modelo D: AST (Audio Spectrogram TF)   │  F1 objetivo: ≥ 0.87
+│  Modelo A: CNN baseline (Mel input)      │  Métrica: F1-macro / recall
+│  Modelo B: EfficientNet-B0 + TL         │  Métrica: F1-macro / top-k
+│  Modelo C: PANNs-CNN14 (fine-tune)      │  Métrica: F1-macro / grupos
+│  Modelo D: AST (futuro/doctorado)       │  Métrica: generalización
 │                                          │
 │  Output: P(especie_1,...,especie_N)      │
 │  Top-K predicciones con probabilidad     │

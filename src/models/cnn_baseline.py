@@ -602,28 +602,40 @@ def evaluate(
         f1_score,
         precision_score,
         recall_score,
+        top_k_accuracy_score,
     )
 
     model.eval()
     model.to(device)
-    all_preds, all_labels = [], []
+    all_preds, all_labels, all_probs = [], [], []
 
     for x, y in loader:
         x = x.to(device)
-        preds = model(x).argmax(dim=1).cpu().numpy()
+        logits = model(x)
+        probs = torch.softmax(logits, dim=1).cpu().numpy()
+        preds = probs.argmax(axis=1)
         all_preds.extend(preds.tolist())
         all_labels.extend(y.numpy().tolist())
+        all_probs.extend(probs.tolist())
 
     y_true = np.array(all_labels)
     y_pred = np.array(all_preds)
+    y_prob = np.array(all_probs)
 
-    per_class_f1 = f1_score(y_true, y_pred, average=None, zero_division=0)
+    labels = list(range(len(class_names))) if class_names else None
+    per_class_f1 = f1_score(y_true, y_pred, labels=labels, average=None, zero_division=0)
+    top_k = {}
+    if labels and y_prob.ndim == 2 and y_prob.shape[1] > 1:
+        for k in (1, 3, 5):
+            if k <= y_prob.shape[1]:
+                top_k[str(k)] = float(top_k_accuracy_score(y_true, y_prob, k=k, labels=labels))
     results = {
         "accuracy": float(accuracy_score(y_true, y_pred)),
         "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
         "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
         "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
-        "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
+        "top_k": top_k,
+        "confusion_matrix": confusion_matrix(y_true, y_pred, labels=labels).tolist(),
         "per_class_f1": {
             (class_names[i] if class_names else str(i)): float(per_class_f1[i])
             for i in range(len(per_class_f1))

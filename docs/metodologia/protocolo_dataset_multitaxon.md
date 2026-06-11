@@ -111,18 +111,20 @@ Estas clases ayudan a evitar que el modelo fuerce una especie conocida ante cual
 
 ## Split experimental
 
-La primera versión usará split estratificado:
+La versión defendible para tesis debe usar split agrupado:
 
 - 70% entrenamiento.
 - 15% validación.
 - 15% prueba.
+- Unidad de separación: archivo original, fuente, sitio o fecha.
 
-Cuando existan metadatos suficientes, se deberá evaluar un split más fuerte:
+Regla central: segmentos derivados del mismo audio original no pueden aparecer
+simultáneamente en entrenamiento y prueba. El archivo
+`dataset_manifest.csv` debe registrar `original_file_id` y `split_group` para
+probar esta separación.
 
-- por fuente;
-- por sitio;
-- por fecha;
-- por grabadora.
+El split estratificado simple solo puede usarse como diagnóstico rápido, no como
+resultado principal de tesis.
 
 ## Control de sesgo
 
@@ -158,7 +160,15 @@ python -m src.data.dataset_builder --profile mexico_multitaxon --output data/raw
 Después:
 
 ```bash
-python -m src.data.dataset_builder --profile mexico_multitaxon --output data/raw/multitaxon --validate
+python -m src.feature_extraction.batch_extractor \
+  --input data/raw/multitaxon \
+  --output data/spectrograms/multitaxon \
+  --mfcc-dir data/features/mfcc/multitaxon \
+  --preset adaptive
+
+python -m src.data.manifest \
+  --raw-dir data/raw/multitaxon \
+  --spectrogram-dir data/spectrograms/multitaxon
 ```
 
 ## Resultado esperado

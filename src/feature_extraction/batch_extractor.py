@@ -62,6 +62,7 @@ class ExtractionConfig:
 
     # Grupo taxonómico (preset)
     preset: str = "default"
+    class_groups: dict[str, str] | None = None
 
     # Espectrograma Mel
     n_fft: int = 2048
@@ -88,6 +89,7 @@ class ExtractionConfig:
     # Formato de salida
     normalize_output: bool = True  # escalar mel a [-1, 1] antes de guardar
     dtype: str = "float32"
+    write_manifest: bool = True  # generar dataset_manifest.csv por segmento
 
 
 # Presets alineados con audio/preprocessor.py
@@ -144,6 +146,7 @@ PRESET_OVERRIDES: dict[str, dict] = {
         "fmax": 8_000,
         "segment_duration": 5.0,
     },
+    "adaptive": {},
 }
 
 
@@ -154,6 +157,24 @@ def apply_preset(cfg: ExtractionConfig, preset: str) -> ExtractionConfig:
         for k, v in overrides.items():
             setattr(cfg, k, v)
     return cfg
+
+
+def load_class_groups(input_dir: str | Path) -> dict[str, str]:
+    """Lee dataset_manifest.json y retorna class_label -> acoustic_group."""
+    manifest_path = Path(input_dir) / "dataset_manifest.json"
+    if not manifest_path.exists():
+        return {}
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    groups = {}
+    for row in data.get("classes", []):
+        label = row.get("class_label")
+        group = row.get("acoustic_group")
+        if label and group:
+            groups[label] = group
+    return groups
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -172,6 +193,10 @@ def _process_single_file(args: tuple) -> dict:
     """
     filepath, class_label, out_dir, mfcc_dir, cfg_dict, idx = args
     cfg = ExtractionConfig(**cfg_dict)
+    if cfg.preset == "adaptive":
+        group = (cfg.class_groups or {}).get(class_label)
+        if group in PRESET_OVERRIDES:
+            cfg = apply_preset(cfg, group)
 
     # Import dentro del worker para compatibilidad con multiproceso
     import librosa
@@ -375,6 +400,12 @@ class BatchExtractor:
 
     def __init__(self, cfg: ExtractionConfig):
         self.cfg = cfg
+        if cfg.preset == "adaptive" and not cfg.class_groups:
+            cfg.class_groups = load_class_groups(cfg.input_dir)
+            if not cfg.class_groups:
+                logger.warning(
+                    "Preset adaptive sin dataset_manifest.json; se usara configuracion base."
+                )
         Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
         if cfg.save_mfcc:
             Path(cfg.mfcc_dir).mkdir(parents=True, exist_ok=True)
@@ -463,6 +494,16 @@ class BatchExtractor:
 
         # ── Reporte de cobertura ──────────────────────────────────────────────
         report = self._build_report(results, errors, skipped)
+        if self.cfg.write_manifest:
+            try:
+                from src.data.manifest import build_segment_manifest
+
+                report["manifest"] = build_segment_manifest(
+                    raw_dir=self.cfg.input_dir,
+                    spectrogram_dir=self.cfg.output_dir,
+                )
+            except Exception as exc:
+                logger.warning(f"No se pudo construir dataset_manifest.csv: {exc}")
         report_path = Path(self.cfg.output_dir) / "extraction_report.json"
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2)
@@ -638,6 +679,11 @@ if __name__ == "__main__":
     parser.add_argument("--validate", action="store_true", help="Solo validar dataset extraído")
     parser.add_argument("--preview", action="store_true", help="Generar preview de espectrogramas")
     parser.add_argument("--max-per-class", type=int, default=None)
+    parser.add_argument(
+        "--no-manifest",
+        action="store_true",
+        help="No generar dataset_manifest.csv al terminar la extraccion",
+    )
     args = parser.parse_args()
 
     cfg = ExtractionConfig(
@@ -648,6 +694,7 @@ if __name__ == "__main__":
         overwrite=args.overwrite,
         n_workers=args.workers,
         max_per_class=args.max_per_class,
+        write_manifest=not args.no_manifest,
     )
     cfg = apply_preset(cfg, args.preset)
 

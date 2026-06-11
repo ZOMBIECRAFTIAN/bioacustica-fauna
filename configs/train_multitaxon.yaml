@@ -6,7 +6,7 @@
 #
 # Dataset esperado:
 #   python -m src.data.dataset_builder --profile mexico_multitaxon --output data/raw/multitaxon
-#   python -m src.feature_extraction.batch_extractor --input data/raw/multitaxon --output data/spectrograms/multitaxon --preset multitaxon
+#   python -m src.feature_extraction.batch_extractor --input data/raw/multitaxon --output data/spectrograms/multitaxon --preset adaptive
 
 dataset:
   root_dir:       "data/spectrograms/multitaxon"
@@ -15,7 +15,10 @@ dataset:
   train_split:    0.70
   val_split:      0.15
   test_split:     0.15
-  split_strategy: "stratified"
+  split_strategy: "source_file"   # evita fuga de segmentos del mismo audio entre splits
+  manifest_csv:   "data/spectrograms/multitaxon/dataset_manifest.csv"
+  label_mode:     "class"         # class | acoustic_group
+  random_state:   42
   min_samples_per_class: 5
 
   # Metadatos de tesis: usados para documentacion/evaluacion externa.
@@ -33,6 +36,44 @@ dataset:
     - human_voice
     - traffic
     - silence
+  class_groups:
+    # Anuros
+    smilisca_baudinii: frogs
+    rhinella_horribilis: frogs
+    incilius_valliceps: frogs
+    lithobates_berlandieri: frogs
+    lithobates_forreri: frogs
+    eleutherodactylus_cystignathoides: frogs
+    exerodonta_smaragdinus: frogs
+    craugastor_augusti: frogs
+    # Murcielagos
+    tadarida_brasiliensis: bats
+    myotis_velifer: bats
+    eptesicus_fuscus: bats
+    nyctinomops_macrotis: bats
+    lasiurus_cinereus: bats
+    balantiopteryx_plicata: bats
+    # Aves comparativas
+    quiscalus_mexicanus: birds
+    turdus_grayi: birds
+    pitangus_sulphuratus: birds
+    myiozetetes_similis: birds
+    melanerpes_aurifrons: birds
+    campylorhynchus_brunneicapillus: birds
+    # Insectos y mamiferos vocales
+    gryllus_assimilis: insects
+    neoconocephalus_triops: insects
+    oecanthus_niveus: insects
+    alouatta_palliata: mammals
+    canis_latrans: mammals
+    procyon_lotor: mammals
+    # Negativas / rechazo
+    unknown_biological: negative
+    rain: negative
+    wind: negative
+    human_voice: negative
+    traffic: negative
+    silence: negative
 
 model:
   type:           "efficientnet"
@@ -84,7 +125,7 @@ audio:
   apply_bandpass:  true
   apply_nr:        true
   normalize:       true
-  preset:          "multitaxon"
+  preset:          "adaptive"
 
 adaptive_presets:
   frogs:   "frogs"
@@ -96,10 +137,20 @@ adaptive_presets:
   noise:   "default"
 
 hierarchical:
-  enabled: false
+  enabled: true
   stage1_task: "acoustic_group"
   stage2_task: "species_or_class"
   unknown_threshold: 0.35
+  stage1_config: "configs/train_multitaxon_stage1_group.yaml"
+  stage2_filter_key: "include_groups"
+
+external_validation:
+  enabled: true
+  protocol: "docs/metodologia/validacion_campo.md"
+  field_audio_dir: "data/field_validation/multitaxon"
+  expected_manifest: "data/field_validation/multitaxon/field_manifest.csv"
+  min_recordings: 10
+  recommended_recordings: 30
 
 output:
   model_dir:       "models/trained/multitaxon"

@@ -1,0 +1,7 @@
+experiment_id,group,support,precision,recall,f1,main_confusions,notes
+maestria_multitaxon_v1,frogs,,,,,,
+maestria_multitaxon_v1,bats,,,,,,
+maestria_multitaxon_v1,birds,,,,,,
+maestria_multitaxon_v1,insects,,,,,,
+maestria_multitaxon_v1,mammals,,,,,,
+maestria_multitaxon_v1,negative,,,,,,

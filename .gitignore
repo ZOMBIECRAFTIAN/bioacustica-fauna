@@ -18,6 +18,7 @@ ENV/
 
 # Testing & Coverage
 .pytest_cache/
+.tmp_pytest/
 .coverage
 coverage.xml
 htmlcov/
@@ -65,7 +66,9 @@ logs/
 *.jsonl
 
 # Local run artifacts
-results/
+results/*
+!results/templates/
+!results/templates/**
 data/**/dataset_manifest.json
 data/**/extraction_report.json
 
