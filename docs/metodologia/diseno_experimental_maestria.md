@@ -10,7 +10,7 @@ frente a un modelo unico entrenado sobre todas las clases.
 
 | Experimento | Configuracion | Proposito |
 |---|---|---|
-| E1 plano | `configs/train_multitaxon.yaml` con features comunes | Baseline principal |
+| E1 plano | `configs/train_multitaxon_flat.yaml` con features comunes | Baseline principal |
 | E2 adaptativo | `batch_extractor --preset adaptive` + `configs/train_multitaxon.yaml` | Medir efecto del preprocesamiento por grupo |
 | E3 jerarquico etapa 1 | `configs/train_multitaxon_stage1_group.yaml` | Clasificar grupo acustico |
 | E4 jerarquico etapa 2 | `configs/train_multitaxon_stage2_group_template.yaml` | Especialistas por grupo |

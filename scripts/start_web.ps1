@@ -14,8 +14,8 @@ while (Get-NetTCPConnection -LocalAddress $HostName -LocalPort $Port -State List
     $Port++
 }
 
-$env:MODEL_PATH = "models/trained/mexico_birds/best_model.pt"
-$env:MODEL_TYPE = "cnn_baseline"
+$env:MODEL_PATH = "models/trained/multitaxon/best_efficientnet.pt"
+$env:MODEL_TYPE = "efficientnet"
 $env:MODEL_DEVICE = "cpu"
 
 $Url = "http://${HostName}:$Port/"

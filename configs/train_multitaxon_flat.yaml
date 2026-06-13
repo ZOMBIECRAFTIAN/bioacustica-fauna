@@ -1,0 +1,89 @@
+# Baseline plano -- modelo unico con preprocesamiento comun.
+#
+# Este experimento sirve como comparacion contra el flujo adaptativo:
+#   python -m src.feature_extraction.batch_extractor --input data/raw/multitaxon --output data/spectrograms/multitaxon_flat --preset multitaxon
+#   python -m src.data.manifest --raw-dir data/raw/multitaxon --spectrogram-dir data/spectrograms/multitaxon_flat
+#   python -m src.models.train --config configs/train_multitaxon_flat.yaml
+
+dataset:
+  root_dir:       "data/spectrograms/multitaxon_flat"
+  target_size:    [128, 128]
+  normalize:      true
+  train_split:    0.70
+  val_split:      0.15
+  test_split:     0.15
+  split_strategy: "source_file"
+  manifest_csv:   "data/spectrograms/multitaxon_flat/dataset_manifest.csv"
+  label_mode:     "class"
+  random_state:   42
+  min_samples_per_class: 5
+  negative_classes:
+    - unknown_biological
+    - rain
+    - wind
+    - human_voice
+    - traffic
+    - silence
+
+model:
+  type:           "efficientnet"
+  backbone:       "efficientnet_b0"
+  in_channels:    1
+  dropout:        0.40
+  pretrained:     true
+
+training:
+  device:         "auto"
+  batch_size:     24
+  num_workers:    4
+  pin_memory:     true
+  phase1_epochs:  8
+  phase2_epochs:  12
+  phase3_epochs:  8
+  optimizer:      "adamw"
+  lr_phase1:      8.0e-4
+  lr_phase2:      1.0e-4
+  lr_phase3:      3.0e-5
+  weight_decay:   1.0e-4
+  label_smoothing: 0.1
+  use_class_weights: true
+  use_mixup:       true
+  mixup_alpha:     0.25
+  use_specaugment: true
+  freq_mask:       16
+  time_mask:       24
+  patience:        8
+
+audio:
+  sample_rate:     44100
+  segment_s:       3.0
+  hop_s:           1.5
+  n_fft:           2048
+  hop_length:      512
+  n_mels:          128
+  fmin:            50
+  fmax:            null
+  apply_bandpass:  true
+  apply_nr:        true
+  normalize:       true
+  preset:          "multitaxon"
+
+output:
+  model_dir:       "models/trained/multitaxon_flat"
+  results_dir:     "results/maestria_multitaxon/flat"
+  experiment_name: "maestria_multitaxon_flat_v1"
+  log_level:       "INFO"
+  save_every_n_epochs: 5
+
+evaluation:
+  metrics:
+    - accuracy
+    - f1_macro
+    - precision_macro
+    - recall_macro
+    - top_k
+  top_k:     [1, 3, 5]
+  min_prob:  0.05
+  group_metrics: true
+  confusion_by_group: true
+  report_unknown_rate: true

@@ -43,8 +43,8 @@ Opciones recomendadas:
 Variables importantes:
 
 ```text
-MODEL_PATH=models/trained/mexico_birds/best_model.pt
-MODEL_TYPE=cnn_baseline
+MODEL_PATH=models/trained/multitaxon/best_efficientnet.pt
+MODEL_TYPE=efficientnet
 MODEL_DEVICE=cpu
 MAX_FILE_MB=50
 ```

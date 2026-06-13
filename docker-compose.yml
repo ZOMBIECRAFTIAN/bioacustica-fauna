@@ -130,9 +130,9 @@ services:
       LOG_LEVEL:   ${LOG_LEVEL:-INFO}
 
       # Modelo
-      MODEL_TYPE:             ${MODEL_TYPE:-cnn_baseline}
+      MODEL_TYPE:             ${MODEL_TYPE:-efficientnet}
       MODEL_BACKBONE:         ${MODEL_BACKBONE:-}
-      MODEL_CHECKPOINT_PATH:  /app/models/trained/mexico_birds/best_model.pt
+      MODEL_CHECKPOINT_PATH:  /app/models/trained/multitaxon/best_efficientnet.pt
       MODEL_DEVICE:           ${MODEL_DEVICE:-cpu}
       MODEL_TOP_K:            ${MODEL_TOP_K:-5}
 

@@ -87,7 +87,7 @@ class Settings:
     MODEL_PATH = (
         os.getenv("MODEL_PATH")
         or os.getenv("MODEL_CHECKPOINT_PATH")
-        or "models/trained/mexico_birds/best_model.pt"
+        or "models/trained/multitaxon/best_efficientnet.pt"
     )
     MODEL_TYPE = os.getenv("MODEL_TYPE", "auto").lower()
     DB_URL = _database_url_from_env()

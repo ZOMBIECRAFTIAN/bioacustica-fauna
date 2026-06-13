@@ -1,0 +1,24 @@
+# Normalize line endings for CI and Windows development.
+* text=auto
+
+*.py text eol=lf
+*.pyi text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.sql text eol=lf
+*.json text eol=lf
+*.csv text eol=lf
+
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.pdf binary
+*.docx binary
+*.npy binary
+*.npz binary
+*.pt binary
+*.pth binary
+*.onnx binary

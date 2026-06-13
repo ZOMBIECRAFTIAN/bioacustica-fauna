@@ -1,3 +1,4 @@
 experiment_id,date,commit,config_path,dataset_version,dataset_manifest,split_manifest,feature_preset,model_type,objective,status,notes
+maestria_multitaxon_flat_v1,,,,configs/train_multitaxon_flat.yaml,,data/spectrograms/multitaxon_flat/dataset_manifest.csv,results/maestria_multitaxon/flat/split_manifest.csv,multitaxon,efficientnet,flat_baseline,pending,
 maestria_multitaxon_v1,,,,configs/train_multitaxon.yaml,,data/spectrograms/multitaxon/dataset_manifest.csv,results/maestria_multitaxon/split_manifest.csv,adaptive,efficientnet,flat_multitaxon,pending,
 maestria_multitaxon_stage1_group_v1,,,,configs/train_multitaxon_stage1_group.yaml,,data/spectrograms/multitaxon/dataset_manifest.csv,results/maestria_multitaxon/stage1_group/split_manifest.csv,adaptive,efficientnet,group_classifier,pending,
