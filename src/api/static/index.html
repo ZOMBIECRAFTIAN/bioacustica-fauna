@@ -78,6 +78,31 @@
       box-shadow: 0 8px 22px rgba(22, 34, 28, .06);
     }
 
+    .header-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .data-entry-link {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px 11px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--accent-dark);
+      font-size: 13px;
+      font-weight: 720;
+      text-decoration: none;
+      white-space: nowrap;
+      box-shadow: 0 8px 22px rgba(22, 34, 28, .06);
+    }
+
     .dot {
       width: 10px;
       height: 10px;
@@ -430,6 +455,7 @@
     @media (max-width: 640px) {
       main { width: min(100% - 20px, 1180px); padding-top: 12px; }
       header { grid-template-columns: 1fr; align-items: start; }
+      .header-tools { justify-content: flex-start; }
       h1 { font-size: 28px; }
       .row, .summary, .sources { grid-template-columns: 1fr; }
       .prediction { grid-template-columns: 78px 1fr; }
@@ -446,7 +472,10 @@
         <h1>BioAcoustics Mexico</h1>
         <div class="subtitle">Identificacion bioacustica para especies de Mexico</div>
       </div>
-      <div class="status"><span id="status-dot" class="dot"></span><span id="status-text">Modelo</span></div>
+      <div class="header-tools">
+        <a class="data-entry-link" href="/data-entry">Captura de datos</a>
+        <div class="status"><span id="status-dot" class="dot"></span><span id="status-text">Modelo</span></div>
+      </div>
     </header>
 
     <div class="workspace">

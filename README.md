@@ -329,6 +329,9 @@ python -m src.data.dataset_builder \
     --output data/raw/multitaxon \
     --max-per-class 150
 
+# See current target species/classes and negative audio classes
+python scripts/list_target_species.py
+
 # Individual group profiles
 python -m src.data.dataset_builder --profile mexico_anurans --output data/raw/anurans
 python -m src.data.dataset_builder --profile mexico_bats --output data/raw/bats
@@ -443,6 +446,13 @@ python -m src.monitoring.acoustic_monitor run \
 | `GET` | `/health` | Service + model + DB status |
 
 Interactive docs: `http://localhost:8000/docs`
+
+Data-entry interface for dataset, field-validation, and negative-class metadata:
+`http://localhost:8000/data-entry`
+
+The data-entry screen can export CSV files from the browser and can also save
+project-local CSVs under `data/app/data_entry/`. That folder is intentionally
+ignored by Git because field metadata may include sensitive sites or coordinates.
 
 ---
 

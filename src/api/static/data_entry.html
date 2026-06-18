@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bioacustica Fauna - Captura de datos</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2ef;
+      --surface: #ffffff;
+      --surface-soft: #f7faf8;
+      --ink: #17231f;
+      --muted: #627069;
+      --line: #d6ded8;
+      --line-strong: #b9c7bf;
+      --teal: #08786f;
+      --teal-dark: #075c55;
+      --blue: #315f9d;
+      --amber: #b87920;
+      --red: #aa3f3f;
+      --focus: rgba(8, 120, 111, .18);
+      --shadow: 0 14px 34px rgba(21, 33, 29, .08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        linear-gradient(180deg, rgba(49, 95, 157, .08), transparent 320px),
+        var(--bg);
+      color: var(--ink);
+    }
+
+    main {
+      width: min(1340px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 20px 0 34px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      padding: 10px 0 16px;
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 30px;
+      line-height: 1.08;
+      letter-spacing: 0;
+      font-weight: 790;
+    }
+
+    .subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .top-actions, .record-actions, .form-actions, .tabs, .table-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .top-actions {
+      justify-content: flex-end;
+    }
+
+    a, button, input, select, textarea {
+      font: inherit;
+    }
+
+    .link, button {
+      min-height: 38px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      padding: 8px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 680;
+    }
+
+    .link:hover, button:hover {
+      border-color: var(--line-strong);
+      background: var(--surface-soft);
+    }
+
+    .primary {
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
+
+    .primary:hover {
+      background: var(--teal-dark);
+      border-color: var(--teal-dark);
+    }
+
+    .secondary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    .danger {
+      background: #fff7f7;
+      border-color: #d8b7b7;
+      color: var(--red);
+    }
+
+    .icon {
+      display: inline-grid;
+      width: 18px;
+      height: 18px;
+      place-items: center;
+      margin-right: 6px;
+      font-weight: 790;
+      line-height: 1;
+    }
+
+    .tabs-wrap {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .82);
+      box-shadow: 0 10px 28px rgba(21, 33, 29, .05);
+    }
+
+    .tabs {
+      gap: 6px;
+    }
+
+    .tab {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      border-color: transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 12px;
+    }
+
+    .tab.active {
+      background: #e9f4f2;
+      border-color: rgba(8, 120, 111, .32);
+      color: var(--teal-dark);
+    }
+
+    .tab-count {
+      min-width: 24px;
+      height: 24px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+    }
+
+    .total-count {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      white-space: nowrap;
+      font-size: 13px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      margin-top: 14px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-soft);
+      border-radius: 8px 8px 0 0;
+    }
+
+    .panel-title {
+      display: grid;
+      gap: 3px;
+    }
+
+    h2 {
+      font-size: 17px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .panel-kicker {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .panel-body {
+      padding: 16px;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .group-title {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 2px;
+      padding-top: 2px;
+      color: var(--teal-dark);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .group-title:not(:first-child) {
+      margin-top: 8px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    label.required > span::after {
+      content: " *";
+      color: var(--amber);
+    }
+
+    label.wide {
+      grid-column: 1 / -1;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 9px 10px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+      font-weight: 520;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--teal);
+      box-shadow: 0 0 0 4px var(--focus);
+    }
+
+    textarea {
+      min-height: 84px;
+      resize: vertical;
+    }
+
+    .form-actions {
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+      padding-top: 6px;
+    }
+
+    .form-actions button {
+      min-width: 132px;
+    }
+
+    .status {
+      margin-top: 12px;
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .records-panel {
+      min-width: 0;
+    }
+
+    .record-actions {
+      justify-content: flex-end;
+    }
+
+    .record-actions button {
+      min-height: 36px;
+      padding: 7px 10px;
+    }
+
+    .table-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .table-actions {
+      justify-content: flex-end;
+    }
+
+    .mini-stat {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .empty-state {
+      min-height: 310px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(8, 120, 111, .07), transparent 42%),
+        #fbfcfb;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+    }
+
+    .empty-state strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--ink);
+      font-size: 16px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      max-height: 620px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      min-width: 980px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8faf9;
+      color: #4e5f57;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #fbfcfb;
+    }
+
+    tbody tr:hover {
+      background: #f1f7f5;
+    }
+
+    td {
+      color: #293933;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .delete-row {
+      min-height: 30px;
+      padding: 5px 9px;
+      color: var(--red);
+      background: transparent;
+      border-color: transparent;
+    }
+
+    .delete-row:hover {
+      background: #fff3f3;
+      border-color: #e0c2c2;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 980px) {
+      main {
+        width: min(100% - 20px, 1340px);
+        padding-top: 12px;
+      }
+
+      .topbar, .tabs-wrap, .layout, .table-toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .top-actions, .record-actions, .table-actions {
+        justify-content: flex-start;
+      }
+
+      h1 {
+        font-size: 25px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      form {
+        grid-template-columns: 1fr;
+      }
+
+      .link, button {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+      }
+
+      .tab {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <div>
+        <h1>Captura de datos</h1>
+        <p class="subtitle">Bioacustica Fauna: dataset, campo, negativas y registros API.</p>
+      </div>
+      <nav class="top-actions" aria-label="Navegacion">
+        <a class="link" href="/">Panel</a>
+        <a class="link" href="/docs">API</a>
+      </nav>
+    </header>
+
+    <section class="tabs-wrap" aria-label="Tipo de captura">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="dataset" type="button">
+          Dataset <span class="tab-count" data-count-for="dataset">0</span>
+        </button>
+        <button class="tab" data-tab="field" type="button">
+          Campo <span class="tab-count" data-count-for="field">0</span>
+        </button>
+        <button class="tab" data-tab="negative" type="button">
+          Negativas <span class="tab-count" data-count-for="negative">0</span>
+        </button>
+        <button class="tab" data-tab="recording" type="button">
+          API <span class="tab-count" data-count-for="recording">0</span>
+        </button>
+      </div>
+      <span class="total-count" id="record-count">0 registros</span>
+    </section>
+
+    <div class="layout">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="panel-kicker">Formulario activo</span>
+            <h2 id="form-title">Dataset manifest</h2>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <form id="form-dataset" data-form="dataset">
+            <h3 class="group-title">Archivo y clase</h3>
+            <label class="required"><span>Archivo audio</span><input name="original_audio_path" placeholder="data/raw/multitaxon/clase/audio.wav" required></label>
+            <label class="required"><span>Clase</span><input name="class_label" placeholder="smilisca_baudinii" required></label>
+            <label><span>Nombre cientifico</span><input name="scientific_name" placeholder="Smilisca baudinii"></label>
+            <label class="required"><span>Grupo</span>
+              <select name="acoustic_group" required>
+                <option value="frogs">frogs</option>
+                <option value="bats">bats</option>
+                <option value="birds">birds</option>
+                <option value="insects">insects</option>
+                <option value="mammals">mammals</option>
+                <option value="reptiles">reptiles</option>
+                <option value="negative">negative</option>
+                <option value="unknown">unknown</option>
+              </select>
+            </label>
+
+            <h3 class="group-title">Fuente</h3>
+            <label><span>Fuente</span><input name="source" placeholder="xeno-canto | inaturalist | field"></label>
+            <label><span>URL fuente</span><input name="source_url" placeholder="https://..."></label>
+            <label><span>Licencia</span><input name="license" placeholder="CC-BY-NC"></label>
+            <label><span>Pais</span><input name="country" placeholder="Mexico"></label>
+
+            <h3 class="group-title">Muestreo</h3>
+            <label><span>Estado</span><input name="state" placeholder="Jalisco"></label>
+            <label><span>Sitio</span><input name="site_id" placeholder="site_001"></label>
+            <label><span>Fecha</span><input name="date" type="date"></label>
+            <label><span>Grabador</span><input name="recordist" placeholder="Nombre"></label>
+            <label><span>Sample rate</span><input name="sample_rate" type="number" min="1" placeholder="44100"></label>
+            <label><span>Duracion s</span><input name="duration_s" type="number" min="0" step="0.01"></label>
+            <label class="wide"><span>Notas</span><textarea name="notes"></textarea></label>
+            <div class="form-actions">
+              <button class="primary" type="submit"><span class="icon">+</span>Agregar</button>
+              <button type="reset">Vaciar</button>
+            </div>
+          </form>
+
+          <form id="form-field" class="hidden" data-form="field">
+            <h3 class="group-title">Sitio y equipo</h3>
+            <label class="required"><span>Recording ID</span><input name="recording_id" placeholder="field_001" required></label>
+            <label class="required"><span>Sitio</span><input name="site_id" placeholder="site_001" required></label>
+            <label><span>Fecha</span><input name="date" type="date"></label>
+            <label><span>Grabadora</span><input name="recorder" placeholder="AudioMoth"></label>
+            <label><span>Microfono</span><input name="microphone" placeholder="integrado"></label>
+            <label><span>Habitat</span><input name="habitat" placeholder="bosque tropical"></label>
+
+            <h3 class="group-title">Condicion de campo</h3>
+            <label><span>Clima</span><input name="weather" placeholder="sin lluvia"></label>
+            <label><span>Duracion s</span><input name="duration_s" type="number" min="0" step="0.01"></label>
+            <label><span>Ruido dominante</span>
+              <select name="dominant_noise">
+                <option value=""></option>
+                <option value="none">none</option>
+                <option value="rain">rain</option>
+                <option value="wind">wind</option>
+                <option value="traffic">traffic</option>
+                <option value="human_voice">human_voice</option>
+                <option value="insects">insects</option>
+              </select>
+            </label>
+            <label><span>Esperado</span><input name="expected_species_or_group" placeholder="frogs | especie"></label>
+            <label class="wide"><span>Permiso/licencia</span><input name="license_or_permission" placeholder="propio | CC | permiso"></label>
+            <label class="wide"><span>Notas</span><textarea name="notes"></textarea></label>
+            <div class="form-actions">
+              <button class="primary" type="submit"><span class="icon">+</span>Agregar</button>
+              <button type="reset">Vaciar</button>
+            </div>
+          </form>
+
+          <form id="form-negative" class="hidden" data-form="negative">
+            <h3 class="group-title">Audio negativo</h3>
+            <label class="required"><span>Archivo audio</span><input name="original_audio_path" placeholder="data/raw/multitaxon/rain/audio.wav" required></label>
+            <label class="required"><span>Clase</span>
+              <select name="class_label" required>
+                <option value="unknown_biological">unknown_biological</option>
+                <option value="rain">rain</option>
+                <option value="wind">wind</option>
+                <option value="human_voice">human_voice</option>
+                <option value="traffic">traffic</option>
+                <option value="silence">silence</option>
+              </select>
+            </label>
+            <label><span>Fuente</span><input name="source" placeholder="field | own_recording"></label>
+            <label><span>Licencia</span><input name="license" placeholder="propia | CC"></label>
+
+            <h3 class="group-title">Contexto</h3>
+            <label><span>Sitio</span><input name="site_id" placeholder="site_001"></label>
+            <label><span>Fecha</span><input name="date" type="date"></label>
+            <label><span>Duracion s</span><input name="duration_s" type="number" min="0" step="0.01"></label>
+            <label><span>Ruido dominante</span><input name="dominant_noise" placeholder="rain"></label>
+            <label class="wide"><span>Notas</span><textarea name="notes"></textarea></label>
+            <div class="form-actions">
+              <button class="primary" type="submit"><span class="icon">+</span>Agregar</button>
+              <button type="reset">Vaciar</button>
+            </div>
+          </form>
+
+          <form id="form-recording" class="hidden" data-form="recording">
+            <h3 class="group-title">Archivo</h3>
+            <label class="required"><span>Filename</span><input name="filename" placeholder="audio.wav" required></label>
+            <label class="required"><span>File path</span><input name="file_path" placeholder="data/raw/audio.wav" required></label>
+            <label class="required"><span>Formato</span><input name="format" value="WAV" required></label>
+            <label class="required"><span>Sample rate</span><input name="sample_rate" type="number" value="44100" required></label>
+            <label><span>Canales</span><input name="channels" type="number" min="1" value="1"></label>
+            <label class="required"><span>Duracion s</span><input name="duration_s" type="number" min="0" step="0.01" required></label>
+
+            <h3 class="group-title">Origen</h3>
+            <label><span>Fuente</span><input name="source" value="field"></label>
+            <label><span>Site UUID</span><input name="site_id" placeholder="opcional"></label>
+            <label><span>Fecha/hora</span><input name="recorded_at" type="datetime-local"></label>
+            <label><span>Latitud</span><input name="latitude" type="number" step="0.000001"></label>
+            <label><span>Longitud</span><input name="longitude" type="number" step="0.000001"></label>
+            <label class="wide"><span>Notas</span><textarea name="notes"></textarea></label>
+            <div class="form-actions">
+              <button class="primary" type="submit"><span class="icon">+</span>Agregar</button>
+              <button id="post-recording" class="secondary" type="button">Enviar API</button>
+              <button type="reset">Vaciar</button>
+            </div>
+          </form>
+
+          <div class="status" id="status"></div>
+        </div>
+      </section>
+
+      <section class="panel records-panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="panel-kicker">Registros capturados</span>
+            <h2 id="table-title">Registros dataset</h2>
+          </div>
+          <div class="record-actions">
+            <button id="save-project" class="primary" type="button">Guardar proyecto</button>
+            <button id="load-project" type="button">Cargar proyecto</button>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <div class="table-toolbar">
+            <span class="mini-stat" id="table-summary">0 filas en esta vista</span>
+            <div class="table-actions">
+              <button id="download-current" class="secondary" type="button"><span class="icon">↓</span>CSV</button>
+              <button id="copy-json" type="button">JSON</button>
+              <button id="import-json" type="button">Importar</button>
+              <button id="clear-current" class="danger" type="button">Limpiar</button>
+              <input id="json-file" class="hidden" type="file" accept=".json,application/json">
+            </div>
+          </div>
+
+          <div class="empty-state" id="empty-state">
+            <div>
+              <strong>Aun no hay registros</strong>
+              <span>Los registros agregados apareceran en esta tabla.</span>
+            </div>
+          </div>
+
+          <div class="table-wrap hidden" id="table-wrap">
+            <table>
+              <thead id="table-head"></thead>
+              <tbody id="table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const schemas = {
+      dataset: [
+        "original_audio_path", "class_label", "scientific_name", "acoustic_group",
+        "source", "source_url", "license", "country", "state", "site_id", "date",
+        "recordist", "sample_rate", "duration_s", "notes"
+      ],
+      field: [
+        "recording_id", "site_id", "date", "recorder", "microphone", "habitat",
+        "weather", "duration_s", "dominant_noise", "expected_species_or_group",
+        "license_or_permission", "notes"
+      ],
+      negative: [
+        "original_audio_path", "class_label", "acoustic_group", "source", "license",
+        "site_id", "date", "duration_s", "dominant_noise", "notes"
+      ],
+      recording: [
+        "filename", "file_path", "format", "sample_rate", "channels", "duration_s",
+        "source", "site_id", "recorded_at", "latitude", "longitude", "notes"
+      ]
+    };
+
+    const titles = {
+      dataset: ["Dataset manifest", "Registros dataset", "dataset_manifest_manual.csv"],
+      field: ["Validacion campo", "Registros campo", "field_manifest.csv"],
+      negative: ["Clases negativas", "Registros negativos", "negative_classes_manifest.csv"],
+      recording: ["Registro API", "Registros API", "recordings_payload.csv"]
+    };
+
+    let active = "dataset";
+    const state = JSON.parse(localStorage.getItem("bioacustica_data_entry") || "{}");
+    for (const key of Object.keys(schemas)) state[key] ||= [];
+
+    const tabs = document.querySelectorAll("[data-tab]");
+    const forms = document.querySelectorAll("form[data-form]");
+    const tableHead = document.querySelector("#table-head");
+    const tableBody = document.querySelector("#table-body");
+    const tableWrap = document.querySelector("#table-wrap");
+    const emptyState = document.querySelector("#empty-state");
+    const statusEl = document.querySelector("#status");
+    const countEl = document.querySelector("#record-count");
+    const summaryEl = document.querySelector("#table-summary");
+
+    function save() {
+      localStorage.setItem("bioacustica_data_entry", JSON.stringify(state));
+    }
+
+    function rowFromForm(form) {
+      const data = Object.fromEntries(new FormData(form).entries());
+      if (form.dataset.form === "negative") data.acoustic_group = "negative";
+      return data;
+    }
+
+    function csvEscape(value) {
+      const text = String(value ?? "");
+      return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    }
+
+    function toCsv(rows, fields) {
+      return [fields.join(","), ...rows.map(row => fields.map(field => csvEscape(row[field])).join(","))].join("\n");
+    }
+
+    function download(filename, content, type = "text/csv") {
+      const blob = new Blob([content], { type: `${type};charset=utf-8` });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function renderCounts() {
+      let total = 0;
+      for (const key of Object.keys(schemas)) {
+        total += state[key].length;
+        const badge = document.querySelector(`[data-count-for="${key}"]`);
+        if (badge) badge.textContent = state[key].length;
+      }
+      countEl.textContent = `${total} registros totales`;
+      summaryEl.textContent = `${state[active].length} filas en esta vista`;
+    }
+
+    function render() {
+      for (const tab of tabs) tab.classList.toggle("active", tab.dataset.tab === active);
+      for (const form of forms) form.classList.toggle("hidden", form.dataset.form !== active);
+
+      document.querySelector("#form-title").textContent = titles[active][0];
+      document.querySelector("#table-title").textContent = titles[active][1];
+      renderCounts();
+
+      const rows = state[active];
+      const fields = schemas[active];
+      const hasRows = rows.length > 0;
+      emptyState.classList.toggle("hidden", hasRows);
+      tableWrap.classList.toggle("hidden", !hasRows);
+
+      tableHead.innerHTML = `<tr>${fields.map(field => `<th>${field}</th>`).join("")}<th>acciones</th></tr>`;
+      tableBody.innerHTML = rows.map((row, idx) => {
+        const cells = fields.map(field => `<td title="${escapeHtml(row[field] || "")}">${escapeHtml(row[field] || "")}</td>`).join("");
+        return `<tr>${cells}<td><button class="delete-row" data-delete="${idx}" type="button">Eliminar</button></td></tr>`;
+      }).join("");
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        active = tab.dataset.tab;
+        statusEl.textContent = "";
+        render();
+      });
+    });
+
+    forms.forEach(form => {
+      form.addEventListener("submit", event => {
+        event.preventDefault();
+        state[form.dataset.form].push(rowFromForm(form));
+        save();
+        form.reset();
+        statusEl.textContent = "Registro agregado.";
+        render();
+      });
+    });
+
+    tableBody.addEventListener("click", event => {
+      const idx = event.target.dataset.delete;
+      if (idx === undefined) return;
+      state[active].splice(Number(idx), 1);
+      save();
+      render();
+    });
+
+    document.querySelector("#download-current").addEventListener("click", () => {
+      download(titles[active][2], toCsv(state[active], schemas[active]));
+    });
+
+    document.querySelector("#save-project").addEventListener("click", async () => {
+      try {
+        const resp = await fetch(`/api/data-entry/${active}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: state[active], mode: "replace" })
+        });
+        const body = await resp.json();
+        statusEl.textContent = resp.ok
+          ? `Guardado en proyecto: ${body.path}`
+          : `Error al guardar: ${JSON.stringify(body)}`;
+      } catch (err) {
+        statusEl.textContent = `API no disponible: ${err}`;
+      }
+    });
+
+    document.querySelector("#load-project").addEventListener("click", async () => {
+      try {
+        const resp = await fetch(`/api/data-entry/${active}`);
+        const body = await resp.json();
+        if (!resp.ok) {
+          statusEl.textContent = `Error al cargar: ${JSON.stringify(body)}`;
+          return;
+        }
+        state[active] = body.rows || [];
+        save();
+        render();
+        statusEl.textContent = `Cargado desde proyecto: ${state[active].length} registros.`;
+      } catch (err) {
+        statusEl.textContent = `API no disponible: ${err}`;
+      }
+    });
+
+    document.querySelector("#clear-current").addEventListener("click", () => {
+      if (!confirm("Limpiar registros visibles?")) return;
+      state[active] = [];
+      save();
+      render();
+    });
+
+    document.querySelector("#copy-json").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(JSON.stringify(state[active], null, 2));
+      statusEl.textContent = "JSON copiado.";
+    });
+
+    document.querySelector("#import-json").addEventListener("click", () => {
+      document.querySelector("#json-file").click();
+    });
+
+    document.querySelector("#json-file").addEventListener("change", async event => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const rows = JSON.parse(await file.text());
+      if (!Array.isArray(rows)) {
+        statusEl.textContent = "JSON invalido.";
+        return;
+      }
+      state[active] = rows;
+      save();
+      render();
+      statusEl.textContent = "JSON importado.";
+      event.target.value = "";
+    });
+
+    document.querySelector("#post-recording").addEventListener("click", async () => {
+      const form = document.querySelector("#form-recording");
+      const payload = rowFromForm(form);
+      for (const key of ["sample_rate", "channels"]) payload[key] = Number(payload[key]);
+      for (const key of ["duration_s", "latitude", "longitude"]) {
+        if (payload[key] === "") payload[key] = null;
+        else payload[key] = Number(payload[key]);
+      }
+      if (!payload.site_id) payload.site_id = null;
+      if (!payload.recorded_at) payload.recorded_at = null;
+      try {
+        const resp = await fetch("/recordings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const body = await resp.json();
+        statusEl.textContent = resp.ok ? `API OK: ${body.recording_id}` : `API error: ${JSON.stringify(body)}`;
+      } catch (err) {
+        statusEl.textContent = `API no disponible: ${err}`;
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

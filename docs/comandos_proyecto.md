@@ -29,6 +29,18 @@ python scripts\verify_scientific_readiness.py
 scripts\run_master_pipeline.bat
 ```
 
+## Ver especies y audios objetivo
+
+```bat
+python scripts\list_target_species.py
+```
+
+Guia detallada:
+
+```text
+docs\metodologia\especies_objetivo_maestria.md
+```
+
 Pasos manuales:
 
 ```bat
@@ -74,6 +86,30 @@ Abrir:
 ```text
 http://localhost:8000/docs
 ```
+
+Interfaz principal:
+
+```text
+http://localhost:8000/
+```
+
+Interfaz para capturar metadatos, validacion de campo y clases negativas:
+
+```text
+http://localhost:8000/data-entry
+```
+
+En esa pantalla puedes usar:
+
+```text
+Descargar CSV      -> baja el CSV visible al navegador
+Guardar proyecto   -> guarda en data/app/data_entry/*.csv
+Cargar proyecto    -> recarga desde data/app/data_entry/*.csv
+Enviar API         -> intenta registrar una grabacion en /recordings
+```
+
+Nota: `data/app/` esta ignorado por Git para evitar subir coordenadas, sitios
+sensibles o registros de campo privados por accidente.
 
 ## Docker
 

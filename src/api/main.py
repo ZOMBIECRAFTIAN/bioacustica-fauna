@@ -29,6 +29,7 @@ Versión: 0.3.0
 
 from __future__ import annotations
 
+import csv
 import logging
 import os
 import tempfile
@@ -216,6 +217,11 @@ class FeedbackIn(BaseModel):
     notes: str | None = None
 
 
+class DataEntryBatch(BaseModel):
+    rows: list[dict[str, str | int | float | bool | None]]
+    mode: str = Field(default="replace", pattern="^(replace|append)$")
+
+
 class SpeciesInfo(BaseModel):
     scientific_name: str
     common_name_es: str | None = None
@@ -398,6 +404,66 @@ _species_info_cache: dict[str, SpeciesInfo] = {}
 APP_DATA_DIR = Path("data/app")
 HISTORY_PATH = APP_DATA_DIR / "history.jsonl"
 FEEDBACK_PATH = APP_DATA_DIR / "feedback.jsonl"
+DATA_ENTRY_DIR = Path(os.getenv("DATA_ENTRY_DIR", "data/app/data_entry"))
+DATA_ENTRY_SCHEMAS: dict[str, list[str]] = {
+    "dataset": [
+        "original_audio_path",
+        "class_label",
+        "scientific_name",
+        "acoustic_group",
+        "source",
+        "source_url",
+        "license",
+        "country",
+        "state",
+        "site_id",
+        "date",
+        "recordist",
+        "sample_rate",
+        "duration_s",
+        "notes",
+    ],
+    "field": [
+        "recording_id",
+        "site_id",
+        "date",
+        "recorder",
+        "microphone",
+        "habitat",
+        "weather",
+        "duration_s",
+        "dominant_noise",
+        "expected_species_or_group",
+        "license_or_permission",
+        "notes",
+    ],
+    "negative": [
+        "original_audio_path",
+        "class_label",
+        "acoustic_group",
+        "source",
+        "license",
+        "site_id",
+        "date",
+        "duration_s",
+        "dominant_noise",
+        "notes",
+    ],
+    "recording": [
+        "filename",
+        "file_path",
+        "format",
+        "sample_rate",
+        "channels",
+        "duration_s",
+        "source",
+        "site_id",
+        "recorded_at",
+        "latitude",
+        "longitude",
+        "notes",
+    ],
+}
 
 
 def _species_key(name: str) -> str:
@@ -470,6 +536,37 @@ def _append_jsonl(path: Path, record: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json_dumps(record) + "\n")
+
+
+def _data_entry_csv_path(kind: str) -> Path:
+    if kind not in DATA_ENTRY_SCHEMAS:
+        raise HTTPException(status_code=404, detail=f"Tipo de captura no soportado: {kind}")
+    DATA_ENTRY_DIR.mkdir(parents=True, exist_ok=True)
+    return DATA_ENTRY_DIR / f"{kind}.csv"
+
+
+def _read_data_entry_rows(kind: str) -> list[dict[str, str]]:
+    path = _data_entry_csv_path(kind)
+    if not path.exists():
+        return []
+    with open(path, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def _write_data_entry_rows(kind: str, rows: list[dict], mode: str) -> int:
+    path = _data_entry_csv_path(kind)
+    fields = DATA_ENTRY_SCHEMAS[kind]
+    existing = _read_data_entry_rows(kind) if mode == "append" else []
+    clean_rows = []
+    for row in [*existing, *rows]:
+        clean_rows.append(
+            {field: "" if row.get(field) is None else str(row.get(field, "")) for field in fields}
+        )
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(clean_rows)
+    return len(clean_rows)
 
 
 def _read_jsonl(path: Path, limit: int = 50) -> list[dict]:
@@ -741,6 +838,7 @@ app.add_middleware(
 # ─────────────────────────────────────────────────────────────────────────────
 
 WEB_APP_FILE = Path(__file__).with_name("static") / "index.html"
+DATA_ENTRY_FILE = Path(__file__).with_name("static") / "data_entry.html"
 
 
 @app.middleware("http")
@@ -753,6 +851,28 @@ async def serve_web_ui(request: Request, call_next):
 @app.get("/api/sources", response_model=list[AudioSourceAPI], tags=["Web"])
 async def audio_sources():
     return SOURCE_APIS
+
+
+@app.get("/data-entry", response_class=HTMLResponse, tags=["Web"])
+async def data_entry_app():
+    if DATA_ENTRY_FILE.exists():
+        return HTMLResponse(DATA_ENTRY_FILE.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="data_entry.html no encontrado")
+
+
+@app.get("/api/data-entry/{kind}", tags=["Web"])
+async def get_data_entry_rows(kind: str):
+    return {"kind": kind, "rows": _read_data_entry_rows(kind)}
+
+
+@app.post("/api/data-entry/{kind}", tags=["Web"])
+async def save_data_entry_rows(kind: str, payload: DataEntryBatch):
+    total = _write_data_entry_rows(kind, payload.rows, payload.mode)
+    return {
+        "kind": kind,
+        "rows": total,
+        "path": _data_entry_csv_path(kind).as_posix(),
+    }
 
 
 @app.get("/api/species/{name}", response_model=SpeciesInfo, tags=["Web"])

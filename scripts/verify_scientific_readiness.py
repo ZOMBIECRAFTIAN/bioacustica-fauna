@@ -81,6 +81,9 @@ def main() -> int:
 
     required_files = [
         "src/data/manifest.py",
+        "src/api/static/data_entry.html",
+        "scripts/list_target_species.py",
+        "docs/metodologia/especies_objetivo_maestria.md",
         "tests/test_manifest_and_splits.py",
         "docs/metodologia/protocolo_dataset_multitaxon.md",
         "docs/metodologia/diseno_experimental_maestria.md",
